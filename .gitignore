@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Project data (do not commit filings or secrets)
+data/
+sec-edgar-filings/
+*.pem
+
+# AWS / CDK
+infra/cdk.out/
+infra/.venv/
+cdk.context.json
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
