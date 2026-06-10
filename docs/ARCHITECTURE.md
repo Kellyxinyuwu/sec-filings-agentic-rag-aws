@@ -40,4 +40,14 @@ Tools → OpenSearch (vectors) + S3 (documents) + Bedrock (LLM / embeddings)
 | `aws.py` or `aws/` | Bedrock, S3, OpenSearch clients (Phase 2–4) |
 - **Observability:** CloudWatch logs + metrics
 
-Diagram and tradeoffs will be expanded in Phase 3–5.
+## Model stack (current capstone path)
+
+| Phase | Retrieval (embed) | Generation (LLM) |
+|-------|-------------------|------------------|
+| 1 | Local `all-MiniLM-L6-v2` + pgvector | — |
+| 2 | Local (unchanged) | Bedrock **Mantle** (Qwen / MiniMax) |
+| 4+ | Optional Titan embed on `bedrock-runtime` | Classic Bedrock when account allows |
+
+Model stack & prod path (local vs AWS, enterprise controls): **[MODEL_AND_PRODUCTION_DECISIONS.md](./MODEL_AND_PRODUCTION_DECISIONS.md)**.
+
+Diagram and deployment detail will be expanded in Phase 3–5.

@@ -2,7 +2,13 @@
 
 Agentic research assistant over public SEC filings (10-K / 10-Q): **ingest → retrieve → multi-agent answer with citations**, deployed on AWS (Bedrock, OpenSearch, S3, ECS).
 
-**Current status:** Phase 0 complete — skeleton + mock API.
+**Current status:** Phase 1 done — next up Phase 2 (Bedrock Mantle generation).
+
+> **How we build:**  
+> - **Chat** → full code each step (you paste into files)  
+> - **[docs/PHASE_1.md](docs/PHASE_1.md)** → concepts + per-step **implementation notes** (no code)  
+> - **README** → phase-level status only (check when a whole phase finishes)  
+> - Phase 0 archive: **[docs/PHASE_0.md](docs/PHASE_0.md)** · Index: **[docs/PHASES.md](docs/PHASES.md)**
 
 ## Goals
 
@@ -41,7 +47,7 @@ Use this section as a **build log**. When you finish a phase, check the box and 
 | Phase | Status | Summary |
 |-------|--------|---------|
 | [x] **0** | Done | Project skeleton, schemas, mock `/chat`, CI |
-| [ ] **1** | — | EDGAR ingest + chunk + local retrieval |
+| [x] **1** | Done | EDGAR ingest + chunk + local retrieval — [PHASE_1.md](docs/PHASE_1.md) |
 | [ ] **2** | — | Bedrock generation + grounded citations |
 | [ ] **3** | — | Agent orchestrator + verifier |
 | [ ] **4** | — | S3 + OpenSearch + embeddings on AWS |
@@ -49,40 +55,58 @@ Use this section as a **build log**. When you finish a phase, check the box and 
 
 ### Phase 0 — Skeleton + mock API ✅
 
-**Goal:** Runnable repo, clear contracts, no AWS yet.
+**Goal:** Runnable repo, clear contracts; Bedrock optional (Support pending OK).
 
-**What we did:**
+**Detailed guide (all steps + copy-paste code):** **[docs/PHASE_0.md](docs/PHASE_0.md)**
 
-- Flat `app/` layout (`api.py`, `schemas.py`, `config.py`, …) — removed empty placeholder packages.
-- `GET /health`, `POST /chat` returning mock answer + citations + `trace_id`.
-- Pydantic models: `Plan`, `EvidenceChunk`, `ChatRequest`, `ChatResponse`, etc.
-- `pyproject.toml`, pytest, GitHub Actions (ruff + pytest), `.env.example`.
-- Docs: [ARCHITECTURE.md](docs/ARCHITECTURE.md), [AWS_SETUP.md](docs/AWS_SETUP.md).
+**Summary of what we did:**
+
+| # | Step |
+|---|------|
+| 1 | GitHub repo `sec-filings-agentic-rag-aws`, clone locally |
+| 2 | Remove mistaken nested `app/app/` folder |
+| 3 | Flat `app/`: `main.py`, `api.py`, `schemas.py`, `config.py`, `logging_setup.py` |
+| 4 | Mock `GET /health`, `POST /chat` (citations, `trace_id`, `agent_steps`, `plan`) |
+| 5 | `pyproject.toml`, `.gitignore`, `.env.example`, `scripts/local_dev.sh` |
+| 6 | `tests/test_health.py`, `.github/workflows/ci.yml` |
+| 7 | Docs: ARCHITECTURE, AWS_SETUP, PHASE_0, PHASES index |
+| 8 | Git commit `047641a` — `feat(phase-0): project skeleton and mock agentic RAG API` |
+| 9 | AWS (parallel): account, **us-east-1**, credit card, budget **sec-rag-monthly $20** (80%+100% alerts), **2 Support cases** for Bedrock + Anthropic (waiting) |
 
 **Key files:** `app/main.py`, `app/api.py`, `app/schemas.py`, `tests/test_health.py`
 
-**How to verify:** `pytest -q` and `curl` commands in Quick start above.
+**How to verify:** `pytest -q` and `curl` in Quick start; see [PHASE_0.md §11](docs/PHASE_0.md#11-验收清单).
 
-**Done notes:** _(add date / commit hash when you push, e.g. 2026-06-02 — initial scaffold)_
+**Done notes:** 2026-06-03 — commit `047641a`; AWS billing+budget done; Bedrock pending Support.
 
 ---
 
-### Phase 1 — EDGAR ingest + local retrieval
+### Phase 1 — EDGAR ingest + local retrieval ✅
 
-**Goal:** Download 1–3 tickers from EDGAR, chunk with metadata, retrieve locally (pgvector Docker or similar).
+**Goal:** AAPL 10-K → pgvector → `POST /retrieve` returns real `EvidenceChunk` (no Mantle yet).
 
-**Planned work:**
+**Build guide + step notes:** **[docs/PHASE_1.md](docs/PHASE_1.md)** (concepts, checklist, implementation log).
 
-- [ ] `scripts/ingest_edgar.py` — download + parse + chunk (reuse ideas from `SEC-10-K-RAG`)
-- [ ] `app/tools.py` — `retrieve()`, `get_section()`
-- [ ] Local vector store + `POST /retrieve` or retrieval inside `/chat` prep
-- [ ] Fill `SEC_COMPANY_NAME` / `SEC_COMPANY_EMAIL` in `.env`
+**Summary of what we did:**
 
-**Key files to add/change:** `scripts/ingest_edgar.py`, `app/tools.py`, `docker-compose.yml` (optional)
+| # | Step |
+|---|------|
+| 1 | deps + `.env` (SEC identity, `DATABASE_URL`, MiniLM) |
+| 2 | Docker pgvector on `:5433` |
+| 3 | `app/config.py` — `database_url`, `embedding_model` |
+| 4 | `app/store.py` — embed, pgvector, `search_similar` |
+| 5 | `scripts/ingest_edgar.py` — AAPL 10-K, 10,834 chunks |
+| 6 | `app/tools.py` — `retrieve()` → `EvidenceChunk` |
+| 7 | `RetrieveRequest` / `RetrieveResponse` in `schemas.py` |
+| 8 | `POST /retrieve`, `/health` phase `"1"`, `/chat` real evidence |
+| 9 | `tests/test_retrieve.py` — mock `app.api.retrieve`, CI offline |
+| 10 | E2E: `pytest -q` 7 passed + curl retrieve/chat on `:8001` |
 
-**How to verify:** Ingest AAPL 10-K → query returns real chunks with `ticker` / `section` metadata.
+**Key files:** `app/store.py`, `scripts/ingest_edgar.py`, `app/tools.py`, `app/api.py`, `tests/test_retrieve.py`
 
-**Done notes:** _…_
+**How to verify:** `docker compose up -d db` → `pytest -q` → `uvicorn app.main:app --port 8001` → curl `/health`, `/retrieve`, `/chat`; see [PHASE_1.md §8](docs/PHASE_1.md#8-验收标准).
+
+**Done notes:** 2026-06-10 — AAPL `0000320193-25-000079` ingested; real vector retrieval works; `/chat` answer still mock until Phase 2.
 
 ---
 
@@ -204,9 +228,17 @@ sec-filings-agentic-rag-aws/
 
 ## Further reading
 
+- [docs/OLD_VS_NEW_PROJECT.md](docs/OLD_VS_NEW_PROJECT.md) — how this repo differs from prior `SEC-10-K-RAG` (living doc)
+- [docs/PHASES.md](docs/PHASES.md) — index of phase build guides (paste-friendly)
+- [docs/PHASE_0.md](docs/PHASE_0.md) — Phase 0 full walkthrough + all source code
+- [docs/PHASE_1.md](docs/PHASE_1.md) — Phase 1 plan: ingest + local retrieval
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — system diagram and agent roles
-- [docs/AWS_SETUP.md](docs/AWS_SETUP.md) — account, Bedrock access, budgets
+- [docs/AWS_SETUP.md](docs/AWS_SETUP.md) — account, Bedrock Support, budgets
+- [docs/AWS_ACCOUNT_NOTES.md](docs/AWS_ACCOUNT_NOTES.md) — Root vs IAM, why Bedrock may be blocked
+- [docs/BEDROCK_MANTLE_VS_RUNTIME.md](docs/BEDROCK_MANTLE_VS_RUNTIME.md) — Mantle vs classic Runtime, 7-day path
+- [docs/MODEL_AND_PRODUCTION_DECISIONS.md](docs/MODEL_AND_PRODUCTION_DECISIONS.md) — model stack (local vs AWS), enterprise prod controls, capstone vs internship
+- [docs/INGEST_EDGAR_FAQ.md](docs/INGEST_EDGAR_FAQ.md) — SEC download, one vs many tickers, `--skip-download`
 
 ## Related work
 
-Prior learning project: `SEC-10-K-RAG` (pgvector + Ollama + FastAPI) — reuse ingest/chunk patterns in Phase 1.
+Prior learning project: `SEC-10-K-RAG` (pgvector + Ollama + FastAPI). See **[docs/OLD_VS_NEW_PROJECT.md](docs/OLD_VS_NEW_PROJECT.md)** for what we reused vs what this repo adds (agents, AWS).

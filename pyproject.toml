@@ -9,12 +9,20 @@ description = "Agentic RAG for SEC filings on AWS (Bedrock, OpenSearch, ECS)"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    # --- Phase 0: API ---
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
     "python-dotenv>=1.0.0",
     "structlog>=24.0.0",
+    # --- Phase 1: RAG + EDGAR ---
+    "psycopg2-binary>=2.9.0",       # PostgreSQL driver
+    "pgvector>=0.3.0",              # vector type in Postgres
+    "sentence-transformers>=3.0.0", # local embeddings (no Bedrock cost)
+    "tiktoken>=0.7.0",              # token-based chunking
+    "numpy>=1.26.0",                # pgvector insert arrays
+    "sec-edgar-downloader>=5.0.0",  # download 10-K from SEC
 ]
 
 [project.optional-dependencies]
