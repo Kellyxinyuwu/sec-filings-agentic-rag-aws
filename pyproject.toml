@@ -23,6 +23,8 @@ dependencies = [
     "tiktoken>=0.7.0",              # token-based chunking
     "numpy>=1.26.0",                # pgvector insert arrays
     "sec-edgar-downloader>=5.0.0",  # download 10-K from SEC
+    # --- Phase 2: Mantle (OpenAI-compatible chat) ---
+    "openai>=1.0.0",
 ]
 
 [project.optional-dependencies]

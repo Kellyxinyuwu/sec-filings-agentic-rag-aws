@@ -19,17 +19,17 @@
 
 That is **intentional**. Phase 1 reuses patterns you already know so you can focus on new repo structure, contracts, and tests—not re-learning chunking and pgvector.
 
-| Capability | Old `SEC-10-K-RAG` | This repo (after Phase 1) |
+| Capability | Old `SEC-10-K-RAG` | This repo (after Phase 2) |
 |------------|-------------------|---------------------------|
 | EDGAR download | ✅ | ✅ `scripts/ingest_edgar.py` |
 | Chunk + embed | ✅ MiniLM + tiktoken | ✅ Same stack |
 | Vector store | ✅ pgvector (Docker) | ✅ pgvector on `:5433` |
 | Vector search | ✅ | ✅ `tools.retrieve()` / `POST /retrieve` |
-| LLM answers | ✅ Local **Ollama** | ❌ `/chat` answer still **mock** (Phase 2+) |
+| LLM answers | ✅ Local **Ollama** | ✅ **AWS Mantle** grounded `/chat` (Phase 2) |
 | Multi-agent | ❌ | ❌ scaffold only (`Plan`, `agent_steps` in API shape) |
 | AWS / deploy | ❌ | ❌ planned Phases 4–5 |
 
-**Practical takeaway:** If you only call `POST /retrieve`, both projects feel alike. The divergence starts at **grounded generation (Phase 2)**, **orchestrator (Phase 3)**, and **cloud data plane (Phase 4–5)**.
+**Practical takeaway:** After Phase 2, both projects answer from retrieved chunks—but this repo uses **Mantle** (cloud) with explicit citation prompts and provider abstraction (`llm.py`). The next gap is **orchestrator (Phase 3)** and **cloud data plane (Phase 4–5)**.
 
 ---
 
@@ -40,7 +40,7 @@ Phase 0–1 already diverge in **architecture**, not just features:
 | Area | Old project | This repo |
 |------|-------------|-----------|
 | **API contracts** | Ad-hoc request/response | `schemas.py`: `Plan`, `EvidenceChunk`, `AgentStep`, `trace_id` — built for agents |
-| **`/chat` role** | Direct RAG pipeline | Future **orchestrator entry**; today wires real `evidence`, mock `answer` |
+| **`/chat` role** | Direct RAG pipeline | RAG pipeline today (retrieve → Mantle); future **orchestrator entry** (Phase 3) |
 | **Tool layer** | Retrieve tied to store | `tools.py` — agents call tools; store can swap pgvector → OpenSearch later |
 | **Section metadata** | Basic chunks | Chunks carry `section` for citations / verifier (Phase 3) |
 | **Engineering** | Learning script style | pytest, CI, structlog, phased docs, env-based config |
@@ -54,13 +54,10 @@ Old project = **proof RAG runs**. New project = **proof you can design agent bou
 
 ```mermaid
 flowchart LR
-  subgraph now ["Phase 1 (done)"]
+  subgraph now ["Phase 1–2 (done)"]
     A[EDGAR ingest] --> B[pgvector local]
     B --> C["/retrieve real chunks"]
-    C --> D["/chat mock answer"]
-  end
-
-  subgraph p2 ["Phase 2"]
+    C --> D["/chat Mantle answer"]
     E[Bedrock Mantle LLM] --> D
   end
 
@@ -101,7 +98,7 @@ Deploy → ECS Fargate + CDK + CloudWatch
 |-------|--------|------|----------------|
 | **0** | ✅ Done | Skeleton, mock `/chat`, schemas, CI | Old had no agent-shaped API |
 | **1** | ✅ Done | Real ingest + retrieve (AAPL 10-K) | **Same RAG core** as old |
-| **2** | Planned | `app/aws.py`, Bedrock Mantle, grounded citations | Cloud LLM instead of Ollama |
+| **2** | ✅ Done | `llm_mantle.py`, `llm.py`, `prompts.py`, Mantle `/chat` | Cloud LLM instead of Ollama |
 | **3** | Planned | `orchestrator.py`, `agents/`, verifier, golden queries | **Core agentic difference** |
 | **4** | Planned | S3, OpenSearch, optional Bedrock embed | Data plane leaves the laptop |
 | **5** | Planned | ECS Fargate, CDK, alarms, cost notes | **Production deploy** story |
@@ -152,8 +149,6 @@ More ingest FAQ: [INGEST_EDGAR_FAQ.md](./INGEST_EDGAR_FAQ.md).
 | Date | Phase | What changed in this doc |
 |------|-------|--------------------------|
 | 2026-06-10 | 1 done | Initial version: similarity table, day-one differences, roadmap diagram, file mapping |
+| 2026-06-11 | 2 done | Mantle `/chat` live; hybrid MiniLM retrieve + Qwen3 generation; `llm.py` abstraction |
 
-<!-- Add rows when Phase 2+ ships, e.g.:
-| 2026-XX-XX | 2 done | Bedrock Mantle wired; Ollama vs Mantle comparison |
-| 2026-XX-XX | 3 done | Orchestrator + verifier; /chat no longer mock pipeline |
--->
+<!-- Add rows when Phase 3+ ships -->

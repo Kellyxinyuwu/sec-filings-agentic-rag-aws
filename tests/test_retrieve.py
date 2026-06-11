@@ -41,7 +41,7 @@ def test_health_phase_1() -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "ok"
-    assert body["phase"] == "1"
+    assert body["phase"] == "2"
 
 
 def test_retrieve_returns_chunks(mock_retrieve: MagicMock) -> None:

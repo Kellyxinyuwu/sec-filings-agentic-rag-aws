@@ -1,8 +1,11 @@
+import time
 import uuid
 
 import structlog
 from fastapi import APIRouter
 
+from app.llm import chat as llm_chat
+from app.prompts import build_rag_prompt
 from app.schemas import (
     AgentStep,
     ChatRequest,
@@ -22,7 +25,7 @@ log = structlog.get_logger()
 
 @router.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "phase": "1"}
+    return {"status": "ok", "phase": "2"}
 
 
 @router.post("/retrieve", response_model=RetrieveResponse)
@@ -61,7 +64,7 @@ def _chunks_to_citations(chunks: list[EvidenceChunk]) -> list[Citation]:
 
 @router.post("/chat", response_model=ChatResponse)
 def chat(request: ChatRequest) -> ChatResponse:
-    """Mock answer; evidence from real retrieve() when DB has data (Phase 1)."""
+    """Phase 2: real retrieve + Mantle grounded answer (via app.llm.chat)."""
     trace_id = str(uuid.uuid4())
     log.info("chat_request", trace_id=trace_id, query=request.query, ticker=request.ticker)
 
@@ -70,37 +73,46 @@ def chat(request: ChatRequest) -> ChatResponse:
         need_retrieval=True,
         ticker=request.ticker,
         filing_ids=request.filing_ids,
-        rationale="Phase 1: real retrieve, mock writer",
+        rationale="Phase 2: retrieve + Mantle writer (grounded on evidence)",
     )
 
     ticker = request.ticker or "AAPL"
-    evidence = retrieve(request.query, ticker=ticker, top_k=5)
 
-    # Fallback if DB empty (e.g. fresh clone before ingest)
-    if not evidence:
-        evidence = [
-            EvidenceChunk(
-                chunk_id="mock-chunk-1",
-                filing_id="mock-filing-1",
-                ticker=ticker,
-                section="Item 1A — Risk Factors",
-                excerpt="[Mock] No chunks in DB — run ingest_edgar.py first.",
-                score=0.0,
-            )
-        ]
+    t0 = time.perf_counter()
+    evidence = retrieve(request.query, ticker=ticker, top_k=5)
+    researcher_ms = (time.perf_counter() - t0) * 1000
+
+    system, user = build_rag_prompt(request.query, evidence)
+
+    t1 = time.perf_counter()
+    answer = llm_chat(system=system, user=user)
+    writer_ms = (time.perf_counter() - t1) * 1000
+
+    log.info(
+        "chat_done",
+        trace_id=trace_id,
+        evidence_count=len(evidence),
+        answer_chars=len(answer),
+        writer_ms=round(writer_ms, 1),
+    )
 
     return ChatResponse(
-        answer=(
-            "[Mock response] Phase 2 will generate answers with Mantle/Bedrock. "
-            f"Your question: {request.query!r}"
-        ),
+        answer=answer,
         citations=_chunks_to_citations(evidence),
         evidence=evidence,
         trace_id=trace_id,
         agent_steps=[
             AgentStep(step="planner", latency_ms=1.0),
-            AgentStep(step="researcher", latency_ms=2.0, detail=f"{len(evidence)} chunks"),
-            AgentStep(step="writer", latency_ms=3.0, detail="mock"),
+            AgentStep(
+                step="researcher",
+                latency_ms=round(researcher_ms, 1),
+                detail=f"{len(evidence)} chunks",
+            ),
+            AgentStep(
+                step="writer",
+                latency_ms=round(writer_ms, 1),
+                detail="mantle",
+            ),
             AgentStep(step="verifier", latency_ms=1.0, detail="mock pass"),
         ],
         plan=plan,

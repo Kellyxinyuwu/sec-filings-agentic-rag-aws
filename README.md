@@ -2,7 +2,7 @@
 
 Agentic research assistant over public SEC filings (10-K / 10-Q): **ingest → retrieve → multi-agent answer with citations**, deployed on AWS (Bedrock, OpenSearch, S3, ECS).
 
-**Current status:** Phase 1 done — next up Phase 2 (Bedrock Mantle generation).
+**Current status:** Phase 2 done — next up Phase 3 (agent orchestrator) — [PHASE_2.md](docs/PHASE_2.md).
 
 > **How we build:**  
 > - **Chat** → full code each step (you paste into files)  
@@ -48,7 +48,7 @@ Use this section as a **build log**. When you finish a phase, check the box and 
 |-------|--------|---------|
 | [x] **0** | Done | Project skeleton, schemas, mock `/chat`, CI |
 | [x] **1** | Done | EDGAR ingest + chunk + local retrieval — [PHASE_1.md](docs/PHASE_1.md) |
-| [ ] **2** | — | Bedrock generation + grounded citations |
+| [x] **2** | Done | Bedrock Mantle grounded `/chat` — [PHASE_2.md](docs/PHASE_2.md) |
 | [ ] **3** | — | Agent orchestrator + verifier |
 | [ ] **4** | — | S3 + OpenSearch + embeddings on AWS |
 | [ ] **5** | — | ECS Fargate + CDK + CloudWatch |
@@ -110,22 +110,31 @@ Use this section as a **build log**. When you finish a phase, check the box and 
 
 ---
 
-### Phase 2 — Bedrock RAG + citations
+### Phase 2 — Bedrock Mantle RAG + citations ✅
 
-**Goal:** Replace mock answers with Bedrock; every answer cites evidence chunks.
+**Goal:** Replace mock answers with AWS Mantle; every answer grounded on retrieved evidence + `chunk_id` citations.
 
-**Planned work:**
+**Build guide + step notes:** **[docs/PHASE_2.md](docs/PHASE_2.md)**
 
-- [ ] `app/aws.py` — Bedrock client (chat + optional embed)
-- [ ] Prompt template: answer only from evidence; citation format
-- [ ] Retries, timeouts, token limits
-- [ ] AWS: enable models per [AWS_SETUP.md](docs/AWS_SETUP.md)
+**Summary of what we did:**
 
-**Key files:** `app/aws.py`, `app/api.py` (wire RAG path)
+| # | Step |
+|---|------|
+| 1 | `openai` + `.env` / `config.py` — `LLM_PROVIDER`, `MANTLE_*` |
+| 2 | `app/llm_mantle.py` + `scripts/test_mantle.py` |
+| 3 | `app/llm.py` — provider abstraction (`chat`) |
+| 4 | `app/prompts.py` — grounded RAG system/user messages |
+| 5 | `app/api.py` — `/chat` real answer; `/health` phase `"2"` |
+| 6 | `tests/test_chat_rag.py` + mock fixes in `test_health.py` |
+| 7 | E2E: `pytest -q` 11 passed + 3 golden curl on `:8001` |
 
-**How to verify:** Same 3 golden questions return answers with valid `chunk_id` citations.
+**Key files:** `app/llm_mantle.py`, `app/llm.py`, `app/prompts.py`, `app/api.py`, `tests/test_chat_rag.py`
 
-**Done notes:** _…_
+**Stack:** local MiniLM + pgvector (retrieve) · **Bedrock Mantle** Qwen3 Coder Next (generation)
+
+**How to verify:** `docker compose up -d db` → `pytest -q` → `uvicorn app.main:app --port 8001` → curl `/chat`; see [PHASE_2.md §8](docs/PHASE_2.md#8-验收标准).
+
+**Done notes:** 2026-06-11 — Mantle `qwen.qwen3-coder-next`; grounded answers with real citations; revenue query correctly refuses when excerpt lacks total figure.
 
 ---
 
@@ -231,12 +240,14 @@ sec-filings-agentic-rag-aws/
 - [docs/OLD_VS_NEW_PROJECT.md](docs/OLD_VS_NEW_PROJECT.md) — how this repo differs from prior `SEC-10-K-RAG` (living doc)
 - [docs/PHASES.md](docs/PHASES.md) — index of phase build guides (paste-friendly)
 - [docs/PHASE_0.md](docs/PHASE_0.md) — Phase 0 full walkthrough + all source code
-- [docs/PHASE_1.md](docs/PHASE_1.md) — Phase 1 plan: ingest + local retrieval
+- [docs/PHASE_1.md](docs/PHASE_1.md) — Phase 1: ingest + local retrieval
+- [docs/PHASE_2.md](docs/PHASE_2.md) — Phase 2: Mantle LLM + grounded citations
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — system diagram and agent roles
 - [docs/AWS_SETUP.md](docs/AWS_SETUP.md) — account, Bedrock Support, budgets
 - [docs/AWS_ACCOUNT_NOTES.md](docs/AWS_ACCOUNT_NOTES.md) — Root vs IAM, why Bedrock may be blocked
 - [docs/BEDROCK_MANTLE_VS_RUNTIME.md](docs/BEDROCK_MANTLE_VS_RUNTIME.md) — Mantle vs classic Runtime, 7-day path
 - [docs/MODEL_AND_PRODUCTION_DECISIONS.md](docs/MODEL_AND_PRODUCTION_DECISIONS.md) — model stack (local vs AWS), enterprise prod controls, capstone vs internship
+- [docs/TOKEN_AND_COST_CONTROL.md](docs/TOKEN_AND_COST_CONTROL.md) — `max_tokens`, input vs output billing, cost controls (living doc)
 - [docs/INGEST_EDGAR_FAQ.md](docs/INGEST_EDGAR_FAQ.md) — SEC download, one vs many tickers, `--skip-download`
 
 ## Related work
