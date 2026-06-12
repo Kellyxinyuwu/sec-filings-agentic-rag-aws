@@ -30,3 +30,7 @@ cdk.context.json
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Local learning / build notes — only docs/README.md is published
+docs/*
+!docs/README.md

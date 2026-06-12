@@ -1,0 +1,238 @@
+# Local environment & verification
+
+This is the **only** file under `docs/` published to GitHub.
+
+Everything else in this folder (phase build guides, architecture notes, AWS setup logs, pytest Q&A, etc.) stays **on my machine** for learning — not tracked in git. If you clone the repo, you will see an empty `docs/` directory except for this file.
+
+For project overview, architecture, and quick start, see the root **[README.md](../README.md)**.
+
+---
+
+## What lives locally (not on GitHub)
+
+Typical files I keep here while building — you will not get them from `git clone`:
+
+| File | Purpose |
+|------|---------|
+| `PHASE_0.md` … `PHASE_3.md` | Step-by-step build logs per phase |
+| `PHASES.md` | Index of phase guides |
+| `ARCHITECTURE.md` | Diagrams and design notes |
+| `PYTEST.md` | Mock / patch conventions |
+| `GOLDEN_QUERIES.md` | Manual E2E eval explained |
+| `AWS_SETUP.md`, `AWS_ACCOUNT_NOTES.md` | Account, Bedrock, budget |
+| `BEDROCK_MANTLE_VS_RUNTIME.md` | Mantle vs classic Runtime |
+| `MODEL_AND_PRODUCTION_DECISIONS.md` | Model stack tradeoffs |
+| `TOKEN_AND_COST_CONTROL.md` | `max_tokens`, billing |
+| `INGEST_EDGAR_FAQ.md` | SEC download FAQ |
+| `OLD_VS_NEW_PROJECT.md` | vs prior `SEC-10-K-RAG` repo |
+
+---
+
+## Prerequisites
+
+| Requirement | Check |
+|-------------|--------|
+| **Python 3.11+** | `python3 --version` |
+| **Docker Desktop** | `docker compose version` |
+| **venv + deps** | `pip install -e ".[dev]"` from repo root |
+| **`.env`** | Copied from `.env.example`, filled in (see below) |
+| **Bedrock Mantle** | API key + model in Mantle console (`us-east-1` or your region) |
+| **SEC identity** | Real name + email for EDGAR User-Agent |
+
+---
+
+## Environment variables (`.env`)
+
+Minimum to run full `/chat` (retrieve + Mantle + agents):
+
+```bash
+# Database (docker-compose maps host 5433 → container 5432)
+DATABASE_URL=postgresql://postgres:postgres@localhost:5433/rag_db
+EMBEDDING_MODEL=all-MiniLM-L6-v2
+
+# SEC (required for ingest downloads)
+SEC_COMPANY_NAME=Your Name
+SEC_COMPANY_EMAIL=you@example.com
+
+# LLM — Bedrock Mantle (OpenAI-compatible)
+LLM_PROVIDER=mantle
+MANTLE_BASE_URL=https://bedrock-mantle.us-east-1.api.aws/v1
+MANTLE_API_KEY=<from Mantle console>
+MANTLE_MODEL_ID=qwen.qwen3-coder-next
+```
+
+Optional: `MANTLE_MAX_TOKENS=1024`, `LOG_LEVEL=INFO`, `APP_ENV=local`.
+
+**Mantle-only smoke test** (no database):
+
+```bash
+source .venv/bin/activate
+python scripts/test_mantle.py
+```
+
+---
+
+## Setup sequence
+
+Run from repo root with venv activated.
+
+### 1. Python environment
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+cp .env.example .env
+# edit .env
+```
+
+### 2. PostgreSQL + pgvector
+
+```bash
+docker compose up -d db
+docker compose ps
+```
+
+Wait until `db` is **healthy**. Postgres is on **localhost:5433** (not 5432).
+
+### 3. Ingest AAPL 10-K (first time)
+
+```bash
+python scripts/ingest_edgar.py --ticker AAPL
+```
+
+Expect thousands of chunks indexed. Re-run is safe; use `--skip-download` if filings already on disk under `sec-edgar-filings/`.
+
+### 4. Start API
+
+```bash
+uvicorn app.main:app --reload --port 8001
+```
+
+**Port already in use?** Another uvicorn may still be running:
+
+```bash
+lsof -i :8001
+kill $(lsof -t -i :8001)   # if you need a clean restart
+```
+
+---
+
+## Verification checklist
+
+Run top to bottom. Mark each when output matches.
+
+### A. Automated tests (offline — no Docker / Mantle)
+
+```bash
+pytest -q
+```
+
+| Expected | |
+|----------|--|
+| `33 passed` | All agent + API tests green |
+| CI | Same on GitHub Actions (`ruff` + `pytest`) |
+
+These tests **mock** DB and LLM. Passing pytest does **not** prove Mantle or pgvector work.
+
+### B. Health
+
+```bash
+curl -s http://127.0.0.1:8001/health
+```
+
+| Expected | |
+|----------|--|
+| `"status":"ok"` | API up |
+| `"phase":"3"` | Agent orchestrator wired |
+
+### C. Retrieve (real DB + embedding model)
+
+```bash
+curl -s -X POST http://127.0.0.1:8001/retrieve \
+  -H "Content-Type: application/json" \
+  -d '{"query": "risk factors", "ticker": "AAPL", "top_k": 3}' | python3 -m json.tool
+```
+
+| Expected | |
+|----------|--|
+| HTTP 200 | |
+| `chunks` non-empty | Ingest completed |
+| Real `chunk_id` | e.g. `AAPL-0000320193-25-000079-...` |
+| `score` floats | Vector similarity |
+
+First retrieve after restart may be slow (~10s) while MiniLM loads.
+
+### D. Chat — REFUSE (no retrieve, no Mantle)
+
+```bash
+curl -s -X POST http://127.0.0.1:8001/chat \
+  -H "Content-Type: application/json" \
+  -d '{"query": "Should I buy AAPL?"}' | python3 -m json.tool
+```
+
+| Field | Expected |
+|-------|----------|
+| `plan.intent` | `refuse` |
+| `evidence` | `[]` (length 0) |
+| `answer` | Starts with investment-advice refusal |
+| `agent_steps` | verifier `citations ok` |
+
+### E. Chat — golden queries (manual E2E)
+
+Spec file: **`tests/golden_queries.yaml`** (also not auto-run by pytest).
+
+```bash
+# 1 — Risk factors
+curl -s -X POST http://127.0.0.1:8001/chat \
+  -H "Content-Type: application/json" \
+  -d '{"query": "What are the main risk factors?", "ticker": "AAPL"}'
+
+# 2 — Revenue
+curl -s -X POST http://127.0.0.1:8001/chat \
+  -H "Content-Type: application/json" \
+  -d '{"query": "What was total net sales or revenue discussion?", "ticker": "AAPL"}'
+
+# 3 — Business overview
+curl -s -X POST http://127.0.0.1:8001/chat \
+  -H "Content-Type: application/json" \
+  -d '{"query": "Who is the company or what is the business overview?", "ticker": "AAPL"}'
+```
+
+| Expected (each QA query) | |
+|--------------------------|--|
+| `plan.intent` | `qa` |
+| `evidence` | Non-empty (typically ~5 chunks) |
+| `agent_steps[-1]` | verifier, `detail`: `citations ok` |
+| `answer` | Grounded on excerpts; cites `chunk_id` in text |
+
+Revenue query may **honestly decline** to state a total figure if excerpts lack it — that is correct grounding behavior.
+
+---
+
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---------|--------------|-----|
+| `pytest` fails | Code regression | Read failure; fix tests or code |
+| `connection refused` on 8001 | API not running | `uvicorn app.main:app --port 8001` |
+| `Address already in use` | Old uvicorn | Use existing server or `kill $(lsof -t -i :8001)` |
+| Empty `chunks` on `/retrieve` | DB empty or wrong URL | `docker compose ps`; re-run ingest |
+| DB connection error | Docker down | `docker compose up -d db` |
+| Mantle 401 / 403 | Bad key or region | Check `MANTLE_*` in `.env` |
+| Mantle timeout | Cold start / long answer | Retry; raise `MANTLE_TIMEOUT_SECONDS` |
+| Slow first `/chat` | MiniLM + Mantle load | Normal; check `agent_steps` latencies |
+
+---
+
+## What CI does vs what you run locally
+
+| | GitHub Actions CI | This checklist |
+|--|-----------------|----------------|
+| `ruff` | Yes | Optional locally |
+| `pytest -q` | Yes | Yes |
+| Docker + ingest | No | Yes for `/retrieve` / `/chat` |
+| Mantle live calls | No | Yes for `/chat` QA |
+| `golden_queries.yaml` | No | Manual curl |
+
+**Both matter:** pytest catches broken logic on every push; this doc catches broken real dependencies before a demo.

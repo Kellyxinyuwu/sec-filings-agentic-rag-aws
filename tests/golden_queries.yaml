@@ -1,6 +1,6 @@
 # Phase 3 golden eval — manual E2E against uvicorn :8001
 # Requires: docker compose up -d db, MANTLE_* in .env
-# Full guide: docs/GOLDEN_QUERIES.md (not run by pytest or CI)
+# Full checklist: docs/README.md (not run by pytest or CI)
 
 version: 1
 ticker_default: AAPL
