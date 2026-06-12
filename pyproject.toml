@@ -25,6 +25,10 @@ dependencies = [
     "sec-edgar-downloader>=5.0.0",  # download 10-K from SEC
     # --- Phase 2: Mantle (OpenAI-compatible chat) ---
     "openai>=1.0.0",
+    # --- Phase 4: AWS data plane (S3 + OpenSearch Serverless) ---
+    "boto3>=1.34.0",
+    "opensearch-py>=2.4.0",
+    "requests-aws4auth>=1.2.0",
 ]
 
 [project.optional-dependencies]

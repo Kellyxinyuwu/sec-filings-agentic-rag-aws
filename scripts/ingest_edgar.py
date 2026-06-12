@@ -22,6 +22,7 @@ import tiktoken
 
 from app.config import settings
 from app.store import init_schema, insert_chunks
+from app.s3_storage import upload_filing_submission
 
 # scripts/ → repo root
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -106,8 +107,7 @@ def find_filing_paths(ticker: str) -> list[tuple[Path, str]]:
 
     return results
 
-
-def ingest_file(txt_path: Path, ticker: str, filing_id: str) -> int:
+def ingest_file(txt_path: Path, ticker: str, filing_id: str, *, upload_s3: bool = False) -> int:
     """Read one filing, chunk, call store.insert_chunks(). Returns chunk count."""
     print(f"  Reading {txt_path} ({len(txt_path.read_bytes()) // 1024} KB) ...")
     text = txt_path.read_text(encoding="utf-8", errors="ignore")
@@ -129,6 +129,12 @@ def ingest_file(txt_path: Path, ticker: str, filing_id: str) -> int:
         source=str(txt_path.relative_to(PROJECT_ROOT)),
         chunk_ids=chunk_ids,
     )
+
+    if upload_s3:
+        uri = upload_filing_submission(txt_path, ticker=ticker, filing_id=filing_id)
+        if uri:
+            print(f"  S3: {uri}")
+
     return n
 
 
@@ -140,6 +146,11 @@ def main() -> int:
         "--skip-download",
         action="store_true",
         help="Skip EDGAR download; ingest files already under sec-edgar-filings/",
+    )
+    parser.add_argument(
+        "--upload-s3",
+        action="store_true",
+        help="After ingest, upload full-submission.txt to S3 (needs S3_BUCKET in .env)",
     )
     args = parser.parse_args()
     ticker = args.ticker.upper()
@@ -169,7 +180,7 @@ def main() -> int:
     total = 0
     for txt_path, filing_id in filings:
         print(f"\nFiling {filing_id}:")
-        n = ingest_file(txt_path, ticker, filing_id)
+        n = ingest_file(txt_path, ticker, filing_id, upload_s3=args.upload_s3)
         total += n
         print(f"Ingested {n} chunks for {ticker} / {filing_id}")
 
