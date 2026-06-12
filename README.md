@@ -2,7 +2,7 @@
 
 Agentic research assistant over public SEC filings (10-K / 10-Q): **ingest → retrieve → multi-agent answer with citations**, deployed on AWS (Bedrock, OpenSearch, S3, ECS).
 
-**Current status:** Phase 2 done — next up Phase 3 (agent orchestrator) — [PHASE_2.md](docs/PHASE_2.md).
+**Current status:** Phase 3 complete — four-agent orchestrator + verifier — [PHASE_3.md](docs/PHASE_3.md).
 
 > **How we build:**  
 > - **Chat** → full code each step (you paste into files)  
@@ -49,7 +49,7 @@ Use this section as a **build log**. When you finish a phase, check the box and 
 | [x] **0** | Done | Project skeleton, schemas, mock `/chat`, CI |
 | [x] **1** | Done | EDGAR ingest + chunk + local retrieval — [PHASE_1.md](docs/PHASE_1.md) |
 | [x] **2** | Done | Bedrock Mantle grounded `/chat` — [PHASE_2.md](docs/PHASE_2.md) |
-| [ ] **3** | — | Agent orchestrator + verifier |
+| [x] **3** | Done | Agent orchestrator + verifier + golden eval — [PHASE_3.md](docs/PHASE_3.md) |
 | [ ] **4** | — | S3 + OpenSearch + embeddings on AWS |
 | [ ] **5** | — | ECS Fargate + CDK + CloudWatch |
 
@@ -138,20 +138,31 @@ Use this section as a **build log**. When you finish a phase, check the box and 
 
 ---
 
-### Phase 3 — Agent orchestrator + verifier
+### Phase 3 — Agent orchestrator + verifier ✅
 
 **Goal:** Multi-agent loop from scratch; fail-closed if citations missing.
 
-**Planned work:**
+**Build guide + step notes:** **[docs/PHASE_3.md](docs/PHASE_3.md)**（含 §0 架构 Q&A）
 
-- [ ] `app/orchestrator.py` — Planner → Researcher → Writer → Verifier (max 1 retry)
-- [ ] `app/agents/` — `planner.py`, `researcher.py`, `writer.py`, `verifier.py`
-- [ ] `/chat` calls orchestrator instead of mock
-- [ ] `tests/golden_queries.yaml` + basic eval
+**Summary of what we did:**
 
-**How to verify:** Verifier rejects unsupported claims; logs show `agent_steps` with latencies.
+| # | Step |
+|---|------|
+| 1 | `app/agents/researcher.py` + `test_researcher.py` |
+| 2 | `app/agents/planner.py` + `test_planner.py` |
+| 3 | `app/agents/writer.py` + `test_writer.py` |
+| 4 | `app/agents/verifier.py` + `test_verifier.py` |
+| 5 | `app/orchestrator.py` + `test_orchestrator.py` |
+| 6 | `api.py` → orchestrator; `/health` phase `"3"` |
+| 7 | `tests/golden_queries.yaml` + E2E curl; [GOLDEN_QUERIES.md](docs/GOLDEN_QUERIES.md) |
 
-**Done notes:** _…_
+**Key files:** `app/orchestrator.py`, `app/agents/*`, `app/api.py`, `tests/golden_queries.yaml`
+
+**Stack:** MiniLM retrieve · Mantle Writer · rule-based Planner/Verifier
+
+**How to verify:** `docker compose up -d db` → `pytest -q` → `uvicorn app.main:app --port 8001` → curl `/health` + golden queries in `tests/golden_queries.yaml`; see [PHASE_3.md](docs/PHASE_3.md) and [GOLDEN_QUERIES.md](docs/GOLDEN_QUERIES.md).
+
+**Done notes:** 2026-06-12 — 33 passed; REFUSE skips retrieve; 3 golden QA + verifier `citations ok` on `:8001`.
 
 ---
 
@@ -206,7 +217,7 @@ sec-filings-agentic-rag-aws/
 ├── scripts/             # CLI scripts (not imported as package)
 │   ├── local_dev.sh     # venv + uvicorn on :8000
 │   └── ingest_edgar.py  # (Phase 1+) download, chunk, index
-├── tests/               # pytest; golden_queries.yaml later
+├── tests/               # pytest + tests/golden_queries.yaml (manual E2E spec)
 ├── docs/                # Human-readable design + AWS setup
 ├── infra/               # (Phase 5+) AWS CDK stacks
 ├── .github/workflows/   # CI on push (ruff + pytest)
@@ -242,6 +253,9 @@ sec-filings-agentic-rag-aws/
 - [docs/PHASE_0.md](docs/PHASE_0.md) — Phase 0 full walkthrough + all source code
 - [docs/PHASE_1.md](docs/PHASE_1.md) — Phase 1: ingest + local retrieval
 - [docs/PHASE_2.md](docs/PHASE_2.md) — Phase 2: Mantle LLM + grounded citations
+- [docs/PHASE_3.md](docs/PHASE_3.md) — Phase 3: agent orchestrator + verifier
+- [docs/PYTEST.md](docs/PYTEST.md) — pytest、mock、tests/ 文件索引
+- [docs/GOLDEN_QUERIES.md](docs/GOLDEN_QUERIES.md) — golden_queries.yaml 是什么、为何手动 E2E、与 CI 的关系
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — system diagram and agent roles
 - [docs/AWS_SETUP.md](docs/AWS_SETUP.md) — account, Bedrock Support, budgets
 - [docs/AWS_ACCOUNT_NOTES.md](docs/AWS_ACCOUNT_NOTES.md) — Root vs IAM, why Bedrock may be blocked

@@ -1,0 +1,1 @@
+"""Agent roles for the Phase 3 orchestrator (Planner → Researcher → Writer → Verifier)."""

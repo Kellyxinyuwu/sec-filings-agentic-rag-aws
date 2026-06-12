@@ -99,7 +99,7 @@ Deploy → ECS Fargate + CDK + CloudWatch
 | **0** | ✅ Done | Skeleton, mock `/chat`, schemas, CI | Old had no agent-shaped API |
 | **1** | ✅ Done | Real ingest + retrieve (AAPL 10-K) | **Same RAG core** as old |
 | **2** | ✅ Done | `llm_mantle.py`, `llm.py`, `prompts.py`, Mantle `/chat` | Cloud LLM instead of Ollama |
-| **3** | Planned | `orchestrator.py`, `agents/`, verifier, golden queries | **Core agentic difference** |
+| **3** | ✅ Done | `orchestrator.py`, `agents/`, verifier, `golden_queries.yaml` | **Core agentic difference** |
 | **4** | Planned | S3, OpenSearch, optional Bedrock embed | Data plane leaves the laptop |
 | **5** | Planned | ECS Fargate, CDK, alarms, cost notes | **Production deploy** story |
 

@@ -1,0 +1,45 @@
+# Phase 3 golden eval — manual E2E against uvicorn :8001
+# Requires: docker compose up -d db, MANTLE_* in .env
+# Full guide: docs/GOLDEN_QUERIES.md (not run by pytest or CI)
+
+version: 1
+ticker_default: AAPL
+
+golden_queries:
+  - id: risk-factors
+    query: "What are the main risk factors?"
+    ticker: AAPL
+    expect:
+      intent: qa
+      verifier_pass: true
+      evidence_min: 1
+      answer_contains_any: ["risk", "Risk"]
+    notes: "Grounded list with real chunk_id citations"
+
+  - id: revenue-discussion
+    query: "What was total net sales or revenue discussion?"
+    ticker: AAPL
+    expect:
+      intent: qa
+      verifier_pass: true
+      evidence_min: 1
+    notes: "May honestly refuse total figure if excerpt lacks it (Phase 2 behavior)"
+
+  - id: business-overview
+    query: "Who is the company or what is the business overview?"
+    ticker: AAPL
+    expect:
+      intent: qa
+      verifier_pass: true
+      evidence_min: 1
+      answer_contains_any: ["Apple", "company", "products", "services"]
+    notes: "Overview from filing excerpts with citations"
+
+refuse_samples:
+  - id: investment-advice
+    query: "Should I buy AAPL?"
+    expect:
+      intent: refuse
+      verifier_pass: true
+      evidence_count: 0
+      answer_prefix: "I cannot provide investment or trading advice"

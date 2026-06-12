@@ -1,8 +1,22 @@
 """
-Tests for POST /retrieve.
+Tests for POST /retrieve (Phase 1+).
 
-CI: monkeypatch app.api.retrieve — no Postgres, no SentenceTransformer load.
-Local integration: curl against running API + ingested DB (Step 10).
+----------------------------------------------------------------------
+测什么？
+  - GET /health 的 phase 字段（随项目阶段更新，当前期望 "2"）
+  - POST /retrieve：JSON 形状、ticker/top_k 传参、空结果、非法 top_k
+
+不测什么？
+  不测真向量搜索质量 — 那靠 ingest + curl E2E。
+
+Mock 策略：
+  monkeypatch app.api.retrieve（api.py 里 from app.tools import retrieve）。
+  返回固定的 SAMPLE_CHUNK，CI 无需 Postgres / SentenceTransformer。
+
+怎么跑：
+  pytest tests/test_retrieve.py -q
+  详见 docs/PYTEST.md
+----------------------------------------------------------------------
 """
 
 from unittest.mock import MagicMock
@@ -15,6 +29,7 @@ from app.schemas import EvidenceChunk
 
 client = TestClient(app)
 
+# 模块级假数据：所有需要「有 chunk」的用例共用
 SAMPLE_CHUNK = EvidenceChunk(
     chunk_id="chunk-test-1",
     filing_id="0000320193-25-000079",
@@ -27,24 +42,26 @@ SAMPLE_CHUNK = EvidenceChunk(
 
 @pytest.fixture
 def mock_retrieve(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
-    """Replace DB search with a fixed chunk — keeps CI offline."""
+    """替换向量检索为固定 chunk — 保持 CI offline。"""
     from app import api
 
     mock = MagicMock(return_value=[SAMPLE_CHUNK])
-    # api.py does `from app.tools import retrieve` — patch the name api uses.
+    # api.py: from app.tools import retrieve — patch api 模块里的名字
     monkeypatch.setattr(api, "retrieve", mock)
     return mock
 
 
 def test_health_phase_1() -> None:
+    """健康检查 + phase 版本号（Phase 3 完成后应改为 assert phase == '3'）。"""
     response = client.get("/health")
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "ok"
-    assert body["phase"] == "2"
+    assert body["phase"] == "3"
 
 
 def test_retrieve_returns_chunks(mock_retrieve: MagicMock) -> None:
+    """正常检索：响应含 query、chunks 字段，且 chunk 内容与 mock 一致。"""
     response = client.post(
         "/retrieve",
         json={
@@ -74,6 +91,7 @@ def test_retrieve_returns_chunks(mock_retrieve: MagicMock) -> None:
 
 
 def test_retrieve_defaults_top_k(mock_retrieve: MagicMock) -> None:
+    """未传 top_k 时，API 默认 top_k=5；ticker 可为 None。"""
     response = client.post(
         "/retrieve",
         json={"query": "revenue growth"},
@@ -87,6 +105,7 @@ def test_retrieve_defaults_top_k(mock_retrieve: MagicMock) -> None:
 
 
 def test_retrieve_rejects_invalid_top_k() -> None:
+    """Pydantic 校验：top_k 必须在 1–20，否则 422 Unprocessable Entity。"""
     response = client.post(
         "/retrieve",
         json={"query": "test", "top_k": 0},
@@ -101,6 +120,7 @@ def test_retrieve_rejects_invalid_top_k() -> None:
 
 
 def test_retrieve_empty_chunks(mock_retrieve: MagicMock) -> None:
+    """检索无结果时仍 200，chunks 为空列表（不是 404）。"""
     mock_retrieve.return_value = []
     response = client.post(
         "/retrieve",
