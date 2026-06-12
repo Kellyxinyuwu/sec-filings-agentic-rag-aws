@@ -1,10 +1,12 @@
-# Local environment & verification
+# Notice — `docs/` folder
 
-This is the **only** file under `docs/` published to GitHub.
+**This is the only file under `docs/` published to GitHub.**
 
-Everything else in this folder (phase build guides, architecture notes, AWS setup logs, pytest Q&A, etc.) stays **on my machine** for learning — not tracked in git. If you clone the repo, you will see an empty `docs/` directory except for this file.
+Everything else in this folder (phase build guides, architecture notes, AWS setup logs, pytest Q&A, etc.) stays **on my machine** for learning — not tracked in git. If you clone the repo, you will only see this notice plus an otherwise empty `docs/` directory.
 
 For project overview, architecture, and quick start, see the root **[README.md](../README.md)**.
+
+The sections below also serve as a **local environment verification checklist** when running this project on my machine.
 
 ---
 
@@ -180,7 +182,7 @@ curl -s -X POST http://127.0.0.1:8001/chat \
 
 ### E. Chat — golden queries (manual E2E)
 
-Spec file: **`tests/golden_queries.yaml`** (also not auto-run by pytest).
+Spec file: `tests/golden_queries.yaml` (also not auto-run by pytest).
 
 ```bash
 # 1 — Risk factors
@@ -235,4 +237,4 @@ Revenue query may **honestly decline** to state a total figure if excerpts lack 
 | Mantle live calls | No | Yes for `/chat` QA |
 | `golden_queries.yaml` | No | Manual curl |
 
-**Both matter:** pytest catches broken logic on every push; this doc catches broken real dependencies before a demo.
+**Both matter:** pytest catches broken logic on every push; this checklist catches broken real dependencies before a demo.

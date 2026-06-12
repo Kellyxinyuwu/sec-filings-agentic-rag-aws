@@ -112,7 +112,7 @@ pytest -q                                    # 33 passed (mocked; CI runs this)
 curl -s http://127.0.0.1:8001/health         # {"status":"ok","phase":"3"}
 ```
 
-Full step-by-step checklist (Docker, ingest, Mantle, golden curl, troubleshooting): **[docs/README.md](docs/README.md)**.
+Full step-by-step checklist (Docker, ingest, Mantle, golden curl, troubleshooting): **[docs/NOTICE.md](docs/NOTICE.md)**.
 
 Manual E2E spec: `tests/golden_queries.yaml` (not run by pytest or CI).
 
@@ -156,7 +156,7 @@ docker-compose.yml            # pgvector on :5433
 infra/                        # Phase 5 CDK (planned)
 ```
 
-**Not committed:** `.env`, `.venv/`, `data/`, `sec-edgar-filings/`, and most of `docs/` (local learning notes). On GitHub you only see **[docs/README.md](docs/README.md)** — local env verification guide.
+**Not committed:** `.env`, `.venv/`, `data/`, `sec-edgar-filings/`, and most of `docs/` (local learning notes). On GitHub you only see **[docs/NOTICE.md](docs/NOTICE.md)** — folder notice + local env checklist.
 
 ---
 
