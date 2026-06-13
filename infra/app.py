@@ -16,6 +16,7 @@ Phase 5 Step 2 — CDK 入口
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import sys
@@ -57,15 +58,23 @@ SecRagStack(
     env=cdk.Environment(account=account, region=region),
 )
 
-# CDK 2.x 默认 synth 到临时目录；复制到 infra/cdk.out 方便查看（等同 cdk synth）
+# CDK CLI 会设 CDK_OUTDIR；单独 python3 app.py 时复制到 infra/cdk.out
 assembly = app.synth()
 outdir = Path(__file__).resolve().parent / "cdk.out"
-if assembly.directory != str(outdir):
-    if outdir.exists():
-        shutil.rmtree(outdir)
-    shutil.copytree(assembly.directory, outdir)
+if not os.environ.get("CDK_OUTDIR"):
+    src = Path(assembly.directory)
+    if src.resolve() != outdir.resolve() and src.exists():
+        if outdir.exists():
+            shutil.rmtree(outdir)
+        shutil.copytree(src, outdir)
 
-template = outdir / "SecRagStack.template.json"
-print(f"OK: synth complete → {outdir}/")
-print(f"    template: {template.name}")
-print("    StackPhase = 5-step2-skeleton")
+    template = outdir / "SecRagStack.template.json"
+    print(f"OK: synth complete → {outdir}/")
+    print(f"    template: {template.name}")
+    if template.exists():
+        outputs = json.load(open(template)).get("Outputs", {})
+        phase = outputs.get("StackPhase", {}).get("Value", "?")
+        ecr = outputs.get("EcrRepositoryUri", {}).get("Value", "(deploy 后才有具体 URI)")
+        print(f"    StackPhase = {phase}")
+        if isinstance(ecr, str):
+            print(f"    EcrRepositoryUri = {ecr}")

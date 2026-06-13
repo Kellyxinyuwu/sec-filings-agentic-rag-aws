@@ -313,6 +313,68 @@ No `cdk deploy` yet. Step 3: `npm install -g aws-cdk` + ECR push.
 
 ---
 
+## Phase 5 Step 3 — ECR + push image (verified 2026-06-13)
+
+**Goal:** Push Step 1 Docker image to private ECR so Step 4 ECS can pull `sec-rag-api:latest`.
+
+**Path used:** AWS Console create repo + IAM policy + `scripts/ecr_push.py` (CDK `cdk deploy` skipped — no CloudFormation/SSM on dev-kelly).
+
+### A. AWS Console — ECR
+
+1. **ECR** → **us-east-1** → **Create repository** → Private
+2. Name: `sec-rag-api` | Tag mutability: **Mutable** | Encryption: **AES-256**
+
+### B. AWS Console — IAM (dev-kelly)
+
+1. **IAM** → **Users** → **dev-kelly** → **Add permissions**
+2. Attach **`AmazonEC2ContainerRegistryPowerUser`** (recommended), or inline JSON in `docs/PHASE_5.md` Step 3.3
+
+### C. Local commands (repo root)
+
+```bash
+cd sec-filings-agentic-rag-aws
+source .venv/bin/activate
+eval "$(python scripts/cdk_env.py)"    # not aws sts (pyexpat broken locally)
+
+python3 -c "
+import boto3
+ecr = boto3.client('ecr', region_name='us-east-1')
+print(ecr.describe_repositories(repositoryNames=['sec-rag-api'])['repositories'][0]['repositoryUri'])
+"
+
+python scripts/ecr_push.py             # reuse sec-rag-api:local; no --build
+```
+
+### D. Verified
+
+| Check | Result |
+|-------|--------|
+| Push | `OK: pushed 449873021145.dkr.ecr.us-east-1.amazonaws.com/sec-rag-api:latest` |
+| Digest | `sha256:9565933ef560...` |
+| ECR size | ~3139 MB compressed (~8.8 GB local) |
+
+### E. Code added
+
+| File | Purpose |
+|------|---------|
+| `infra/stacks/sec_rag_stack.py` | CDK `ecr.Repository` (optional deploy) |
+| `scripts/ecr_push.py` | login → tag → push |
+| `scripts/cdk_env.py` | export `CDK_DEFAULT_ACCOUNT` via boto3 |
+| `scripts/ensure_ecr_repo.py` | boto3 create repo fallback |
+
+### F. Troubleshooting (summary)
+
+| Issue | Fix |
+|-------|-----|
+| `aws sts` pyexpat error | `eval "$(python scripts/cdk_env.py)"` |
+| `cdk_env.py` not found | Run from **repo root**, not `infra/` |
+| Layers Pushed, manifest **403** | Add `ecr:PutImage` + attach **AmazonEC2ContainerRegistryPowerUser** |
+| First push slow (~1h) | Normal — PyTorch layer ~3GB; retry is fast (`Layer already exists`) |
+
+Full Q&A (layers, what is pushed, etc.): local `docs/PHASE_5.md` Step 3.7.
+
+---
+
 ## Phase 4 teardown (save AWS cost after demo)
 
 OpenSearch Serverless bills by **OCU** while the collection exists — delete it when not actively developing.
