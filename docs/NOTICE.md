@@ -30,6 +30,8 @@ Typical files I keep here while building — you will not get them from `git clo
 | `SOURCE_CONTROL_SETUP.md` | Cursor SCM 嵌套 git / 父 folder 踩坑与修复 |
 | `GIT_COMMIT_AND_SYNC.md` | Commit vs Sync（Push）左下角圈圈箭头 |
 | `REST_API_AND_CURL.md` | REST API 是什么、curl 测什么、三个 endpoint 示例 |
+| `PHASE_4_STEP_8.md` | Phase 4 Step 8 实现前指南（README Done + teardown） |
+| `PHASE_5.md` | Phase 5 部署面规划（Docker + ECS + CDK）— Step 1 ✅ |
 
 ---
 
@@ -240,6 +242,40 @@ curl -s -X POST http://127.0.0.1:8001/chat \
 **Phase 4 verified (2026-06-13, opensearch backend):** QA risk factors → 5 evidence chunks, verifier `citations ok`, Mantle answer with `[AAPL-...]` refs.
 
 Revenue query may **honestly decline** to state a total figure if excerpts lack it — that is correct grounding behavior.
+
+---
+
+## Phase 5 Step 1 — Docker local smoke (verified 2026-06-02)
+
+Containerized FastAPI on port **8000** (local uvicorn stays on **8001**).
+
+```bash
+cd sec-filings-agentic-rag-aws
+docker build -t sec-rag-api:local .
+docker rm -f sec-rag-api-smoke 2>/dev/null
+docker run --rm -p 127.0.0.1:8000:8000 --env-file .env \
+  -v "$HOME/.aws:/root/.aws:ro" \
+  --name sec-rag-api-smoke \
+  sec-rag-api:local
+```
+
+Second terminal:
+
+```bash
+curl -s http://127.0.0.1:8000/health
+python scripts/docker_smoke.py
+docker ps --filter name=sec-rag-api-smoke
+```
+
+| Check | Expected |
+|-------|----------|
+| `/health` | `status: ok`, `phase: 4`, `vector_backend: opensearch` |
+| `docker_smoke.py` | `OK: container health check passed` |
+| `docker ps` PORTS | `127.0.0.1:8000->8000/tcp` |
+
+**macOS gotcha:** `-p 8000:8000` may leave `PORTS` as bare `8000/tcp` and curl returns empty reply; use `-p 127.0.0.1:8000:8000`.
+
+**Image size:** ~8.8 GB (`sentence-transformers` + PyTorch CPU). Optional build-time MiniLM warmup is commented out in `Dockerfile`.
 
 ---
 

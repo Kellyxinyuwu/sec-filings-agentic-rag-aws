@@ -1,0 +1,39 @@
+# Phase 5 — 不要打进 Docker 镜像的内容（减小体积、避免泄露密钥）
+
+# 本地虚拟环境（几百 MB，容器里会 pip install 重来）
+.venv/
+venv/
+
+# Git 历史
+.git/
+.gitignore
+
+# 密钥 — 运行时用 --env-file .env 或 ECS Secrets 注入，绝不 COPY 进镜像
+.env
+.env.*
+!.env.example
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# 本地数据（SEC 原文、下载目录 — ingest 仍在 laptop 跑）
+sec-edgar-filings/
+data/
+
+# 学习笔记（不进镜像）
+docs/
+
+# 测试（CI 在 GitHub 跑，容器只跑 API）
+tests/
+
+# CDK 产出
+infra/cdk.out/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
