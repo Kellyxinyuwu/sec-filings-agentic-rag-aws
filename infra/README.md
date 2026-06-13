@@ -103,7 +103,25 @@ python scripts/alb_status.py --curl
 
 `/retrieve` 仍待 **Step 6**。详见 `docs/PHASE_5.md` Step 5。
 
-## 后续（Step 6+ IAM / Secrets）
+## Step 6 — Task IAM ✅（2026-06-13）
+
+**目标：** ECS task role 访问 S3 + AOSS；无容器内 `~/.aws/credentials`。
+
+```bash
+eval "$(python scripts/cdk_env.py)"
+python scripts/cdk_ecs_context.py --deploy
+python scripts/aoss_grant_task_role.py
+python scripts/alb_api_smoke.py
+```
+
+| 层 | 文件 |
+|----|------|
+| IAM policy | `infra/stacks/task_iam.py` |
+| AOSS data access | `scripts/aoss_grant_task_role.py` → `sec-rag-data-access` |
+
+**验证：** `alb_api_smoke.py` → 3 AAPL chunks via OpenSearch（无容器内 AWS credentials 文件）。
+
+## 后续（Step 7+ Secrets）
 
 ```bash
 cdk bootstrap   # 账号/区域首次 deploy 前

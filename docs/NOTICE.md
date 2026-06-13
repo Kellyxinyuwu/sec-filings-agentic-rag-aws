@@ -31,7 +31,7 @@ Typical files I keep here while building — you will not get them from `git clo
 | `GIT_COMMIT_AND_SYNC.md` | Commit vs Sync（Push）左下角圈圈箭头 |
 | `REST_API_AND_CURL.md` | REST API 是什么、curl 测什么、三个 endpoint 示例 |
 | `PHASE_4_STEP_8.md` | Phase 4 Step 8 实现前指南（README Done + teardown） |
-| `PHASE_5.md` | Phase 5 部署面规划（Docker + ECS + CDK）— Step 1–5 ✅ |
+| `PHASE_5.md` | Phase 5 部署面规划（Docker + ECS + CDK）— Step 1–6 ✅ |
 
 ---
 
@@ -422,6 +422,28 @@ python scripts/alb_status.py --curl
 `/retrieve` still needs **Step 6** task IAM. Details: local `docs/PHASE_5.md` Step 5.
 
 ---
+
+## Phase 5 Step 6 — Task IAM (verified 2026-06-13)
+
+**Goal:** ECS task uses IAM role for S3 + OpenSearch (no `~/.aws` in container).
+
+```bash
+python scripts/cdk_ecs_context.py --deploy
+python scripts/aoss_grant_task_role.py
+python scripts/alb_api_smoke.py
+```
+
+| Check | Result |
+|-------|--------|
+| IAM policy on TaskRole | S3 read + `aoss:APIAccessAll` |
+| Data access policy | task role ARN in `sec-rag-data-access` |
+| ALB `/retrieve` | 3 AAPL chunks, top score ~0.72 |
+
+`/chat` still uses `MANTLE_API_KEY` from task env — **Step 7** Secrets Manager.
+
+---
+
+## Phase 4 teardown (save AWS cost after demo)
 
 OpenSearch Serverless bills by **OCU** while the collection exists — delete it when not actively developing.
 

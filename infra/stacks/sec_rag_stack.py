@@ -5,7 +5,8 @@ Step 2：空骨架，能 cdk synth。
 Step 3：ECR
 Step 4：ECS Fargate
 Step 5：ALB + target group (/health)
-Step 6+：IAM task role → Secrets → CloudWatch
+Step 6：Task IAM (S3 + AOSS)
+Step 7+：Secrets → CloudWatch
 
 与 Phase 4 共用：
   - region: us-east-1
@@ -24,6 +25,7 @@ from aws_cdk import aws_logs as logs
 from constructs import Construct
 
 from stacks.ecs_env import container_environment
+from stacks.task_iam import attach_task_policies
 
 # 与 Dockerfile 本地 tag、ECR 仓库名一致
 ECR_REPOSITORY_NAME = "sec-rag-api"
@@ -107,6 +109,9 @@ class SecRagStack(Stack):
             assumed_by=iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
             description="App runtime - Step 6 adds S3 + AOSS",
         )
+
+        # Step 6: S3 read + AOSS IAM (data access policy via scripts/aoss_grant_task_role.py)
+        attach_task_policies(self, task_role)
 
         task_definition = ecs.FargateTaskDefinition(
             self,
@@ -227,7 +232,13 @@ class SecRagStack(Stack):
             self,
             "TaskRoleArn",
             value=task_role.role_arn,
-            description="Add to OpenSearch data access policy in Step 6",
+            description="Run: python scripts/aoss_grant_task_role.py",
+        )
+        CfnOutput(
+            self,
+            "AossGrantHint",
+            value="python scripts/aoss_grant_task_role.py",
+            description="After deploy: add task role to AOSS data access policy",
         )
         CfnOutput(
             self,
@@ -236,14 +247,12 @@ class SecRagStack(Stack):
             description="After deploy: curl /health via ALB DNS",
         )
 
-        # -----------------------------------------------------------------
-        # Step 6: Task IAM — S3 read, OpenSearch Serverless data access
         # Step 7: Secrets Manager for MANTLE_API_KEY
         # -----------------------------------------------------------------
 
         CfnOutput(
             self,
             "StackPhase",
-            value="5-step5-alb",
+            value="5-step6-task-iam",
             description="CDK stack phase marker",
         )

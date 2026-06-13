@@ -29,6 +29,7 @@ ENV_TO_CONTEXT: dict[str, str] = {
     "AWS_REGION": "aws_region",
     "OPENSEARCH_ENDPOINT": "opensearch_endpoint",
     "OPENSEARCH_INDEX": "opensearch_index",
+    "OPENSEARCH_COLLECTION_NAME": "opensearch_collection_name",
     "S3_BUCKET": "s3_bucket",
     "S3_PREFIX": "s3_prefix",
     "EMBEDDING_MODEL": "embedding_model",
