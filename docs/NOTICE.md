@@ -29,6 +29,7 @@ Typical files I keep here while building — you will not get them from `git clo
 | `OLD_VS_NEW_PROJECT.md` | vs prior `SEC-10-K-RAG` repo |
 | `SOURCE_CONTROL_SETUP.md` | Cursor SCM 嵌套 git / 父 folder 踩坑与修复 |
 | `GIT_COMMIT_AND_SYNC.md` | Commit vs Sync（Push）左下角圈圈箭头 |
+| `REST_API_AND_CURL.md` | REST API 是什么、curl 测什么、三个 endpoint 示例 |
 
 ---
 
@@ -151,7 +152,7 @@ pytest -q
 
 | Expected | |
 |----------|--|
-| `33 passed` | All agent + API tests green |
+| `61 passed` | All agent + API + Phase 4 tests green |
 | CI | Same on GitHub Actions (`ruff` + `pytest`) |
 
 These tests **mock** DB and LLM. Passing pytest does **not** prove Mantle or pgvector work.
@@ -183,7 +184,15 @@ curl -s -X POST http://127.0.0.1:8001/retrieve \
 | Real `chunk_id` | e.g. `AAPL-0000320193-25-000079-...` |
 | `score` floats | Vector similarity |
 
-First retrieve after restart may be slow (~10s) while MiniLM loads.
+First retrieve after restart may be slow (~10–20s) while MiniLM loads; OpenSearch first call can be slower.
+
+**Phase 4 verified (2026-06-13, `VECTOR_BACKEND=opensearch`):** 3 chunks; top `AAPL-0000320193-25-000079-00209` score ~0.72.
+
+### C2. Retrieve — OpenSearch backend (Phase 4)
+
+Set in `.env`: `VECTOR_BACKEND=opensearch`, restart uvicorn. Same curl as §C; data comes from AWS OpenSearch index `sec-chunks` (not pgvector).
+
+---
 
 ### D. Chat — REFUSE (no retrieve, no Mantle)
 
@@ -227,6 +236,8 @@ curl -s -X POST http://127.0.0.1:8001/chat \
 | `evidence` | Non-empty (typically ~5 chunks) |
 | `agent_steps[-1]` | verifier, `detail`: `citations ok` |
 | `answer` | Grounded on excerpts; cites `chunk_id` in text |
+
+**Phase 4 verified (2026-06-13, opensearch backend):** QA risk factors → 5 evidence chunks, verifier `citations ok`, Mantle answer with `[AAPL-...]` refs.
 
 Revenue query may **honestly decline** to state a total figure if excerpts lack it — that is correct grounding behavior.
 
