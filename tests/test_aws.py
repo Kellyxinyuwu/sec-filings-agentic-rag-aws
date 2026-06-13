@@ -20,9 +20,10 @@ def _clear_session_cache() -> None:
 
 
 def test_vector_backend_defaults_local() -> None:
-    assert aws.vector_backend() == "local"
-    assert aws.use_local_pgvector() is True
-    assert aws.use_opensearch() is False
+    with patch.object(settings, "vector_backend", "local"):
+        assert aws.vector_backend() == "local"
+        assert aws.use_local_pgvector() is True
+        assert aws.use_opensearch() is False
 
 
 def test_parse_opensearch_host_from_url() -> None:
@@ -87,7 +88,18 @@ def test_get_opensearch_client_requires_endpoint() -> None:
 
 def test_import_does_not_create_clients() -> None:
     """Import + helper calls that skip network should not instantiate boto3 Session."""
-    with patch("app.aws.boto3.Session") as mock_session_cls:
-        aws.clear_aws_client_cache()
-        assert aws.vector_backend() == "local"
-        mock_session_cls.assert_not_called()
+    with patch.object(settings, "vector_backend", "local"):
+        with patch("app.aws.boto3.Session") as mock_session_cls:
+            aws.clear_aws_client_cache()
+            assert aws.vector_backend() == "local"
+            mock_session_cls.assert_not_called()
+
+
+def test_is_opensearch_configured_false_when_empty() -> None:
+    with patch.object(settings, "opensearch_endpoint", ""):
+        assert aws.is_opensearch_configured() is False
+
+
+def test_is_opensearch_configured_true_when_set() -> None:
+    with patch.object(settings, "opensearch_endpoint", "https://x.aoss.us-east-1.on.aws"):
+        assert aws.is_opensearch_configured() is True

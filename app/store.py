@@ -204,6 +204,7 @@ def insert_chunks(
     source: str,
     sections: list[str] | None = None,
     chunk_ids: list[str] | None = None,
+    embeddings: list[list[float]] | None = None,
 ) -> int:
     """
     把切好的文本块 embed 后写入数据库。
@@ -218,8 +219,9 @@ def insert_chunks(
     if not chunks:
         return 0
 
-    # 1) 文本 → 向量
-    embeddings = embed_texts(chunks)
+    # 1) 文本 → 向量（Step 5 双写时可由 ingest 预先 embed，避免算两次）
+    if embeddings is None:
+        embeddings = embed_texts(chunks)
 
     # 2) 每块猜 section（也可由调用方传入 sections 覆盖）
     if sections is None:

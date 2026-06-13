@@ -2,7 +2,7 @@
 
 Multi-agent RAG over SEC 10-K / 10-Q filings: **ingest → retrieve → Planner → Researcher → Writer → Verifier**, with grounded answers and `chunk_id` citations.
 
-**Status:** Phases 0–3 complete (local pgvector + Bedrock Mantle + agent orchestrator). Phases 4–5 planned (AWS data plane + ECS deploy).
+**Status:** Phases 0–3 complete. **Phase 4 in progress** (Steps 1–5 done: S3 + OpenSearch ingest dual-write; Steps 6–8 pending). Phase 5 planned (ECS deploy).
 
 ---
 
@@ -12,7 +12,7 @@ Multi-agent RAG over SEC 10-K / 10-Q filings: **ingest → retrieve → Planner 
 POST /chat
   → orchestrator.run_chat()
       → Planner      (rules: QA / REFUSE / SUMMARIZE / DIFF)
-      → Researcher   (tools.retrieve — local MiniLM + pgvector)
+      → Researcher   (tools.retrieve — MiniLM + pgvector or OpenSearch)
       → Writer       (grounded prompt + Bedrock Mantle LLM)
       → Verifier     (citation check; fail-closed; max 1 writer retry)
 ```
@@ -21,9 +21,9 @@ POST /chat
 |-------|-----------|------------|
 | API | FastAPI | `app/api.py`, `app/main.py` |
 | Agents | planner, researcher, writer, verifier | `app/agents/` |
-| Retrieval | vector search | `sentence-transformers/all-MiniLM-L6-v2` + pgvector |
+| Retrieval | vector search | `all-MiniLM-L6-v2` + pgvector (default) or **OpenSearch Serverless** (`VECTOR_BACKEND=opensearch`) |
 | Generation | LLM | AWS Bedrock **Mantle** (`qwen.qwen3-coder-next`) |
-| Storage | vectors + metadata | PostgreSQL 16 + pgvector (Docker, port **5433**) |
+| Storage | vectors + metadata | PostgreSQL 16 + pgvector (Docker, port **5433**); optional **S3** filings + **OpenSearch** index |
 | CI | lint + unit tests | GitHub Actions: `ruff` + `pytest` (no live DB/LLM) |
 
 ---
@@ -70,6 +70,17 @@ Edit `.env` — minimum for full `/chat`:
 
 Optional: `MANTLE_MAX_TOKENS=1024`, `LOG_LEVEL=INFO`.
 
+**Phase 4 (AWS data plane)** — add when using S3 / OpenSearch:
+
+| Variable | Purpose |
+|----------|---------|
+| `AWS_REGION` | e.g. `us-east-1` |
+| `S3_BUCKET` / `S3_PREFIX` | Raw filing upload target |
+| `OPENSEARCH_ENDPOINT` / `OPENSEARCH_INDEX` | OpenSearch Serverless collection |
+| `VECTOR_BACKEND` | `local` (default, pgvector) or `opensearch` |
+
+AWS credentials: `~/.aws/credentials` (not committed). See `.env.example`.
+
 Test Mantle only (no DB):
 
 ```bash
@@ -87,11 +98,32 @@ Postgres listens on **host port 5433** (not 5432).
 
 ### 4. Ingest sample data (first time)
 
+**Local only** (pgvector):
+
 ```bash
 python scripts/ingest_edgar.py --ticker AAPL
 ```
 
-Downloads AAPL 10-K, chunks, embeds, loads into pgvector. Re-run safe; use `--skip-download` if filings already on disk.
+**Phase 4 — dual-write to OpenSearch + S3** (needs AWS creds + `.env`):
+
+```bash
+python scripts/ingest_edgar.py --ticker AAPL --skip-download --index-opensearch --upload-s3
+```
+
+| Flag | Effect |
+|------|--------|
+| `--skip-download` | Use filings already under `sec-edgar-filings/` |
+| `--index-opensearch` | Bulk-index chunks to OpenSearch (embed once, shared with pgvector) |
+| `--upload-s3` | Upload `full-submission.txt` to S3 |
+
+Verify cloud retrieve:
+
+```bash
+export VECTOR_BACKEND=opensearch
+python -c "from app.store import search_similar; print(len(search_similar('risk factors', ticker='AAPL', top_k=3)))"
+```
+
+Downloads AAPL 10-K, chunks (400 tokens / 100 overlap), embeds with MiniLM, loads into pgvector. Re-run is safe (stable `chunk_id` upsert).
 
 ### 5. Run API
 
@@ -176,7 +208,7 @@ Golden eval is intentional manual smoke — slow, model-dependent, not wired int
 | Phase | Status | Scope |
 |-------|--------|--------|
 | 0–3 | Done | Skeleton, ingest, Mantle RAG, agent orchestrator + verifier |
-| 4 | Planned | S3, OpenSearch, Bedrock embeddings |
+| 4 | In progress | S3 filing storage, OpenSearch k-NN index, ingest dual-write (Steps 1–5 ✅) |
 | 5 | Planned | ECS Fargate, CDK, CloudWatch |
 
 ---

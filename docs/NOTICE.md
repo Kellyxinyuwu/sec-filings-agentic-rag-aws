@@ -101,11 +101,28 @@ Wait until `db` is **healthy**. Postgres is on **localhost:5433** (not 5432).
 
 ### 3. Ingest AAPL 10-K (first time)
 
+**Local (pgvector only):**
+
 ```bash
 python scripts/ingest_edgar.py --ticker AAPL
 ```
 
+**Phase 4 — also index OpenSearch and/or upload S3** (optional):
+
+```bash
+python scripts/ingest_edgar.py --ticker AAPL --skip-download --index-opensearch --upload-s3
+```
+
 Expect thousands of chunks indexed. Re-run is safe; use `--skip-download` if filings already on disk under `sec-edgar-filings/`.
+
+Cloud retrieve smoke (after `--index-opensearch`):
+
+```bash
+export VECTOR_BACKEND=opensearch
+python -c "from app.store import search_similar; print(len(search_similar('risk factors', ticker='AAPL', top_k=3)))"
+```
+
+Expect `3` (or `top_k`) when index is populated.
 
 ### 4. Start API
 

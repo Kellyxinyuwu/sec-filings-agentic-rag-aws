@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """
-Step 5: Download SEC 10-K → chunk → embed → pgvector.
+Download SEC 10-K → chunk → embed → pgvector (+ optional S3 / OpenSearch).
 
 Usage (repo root):
     python scripts/ingest_edgar.py --ticker AAPL
+    python scripts/ingest_edgar.py --ticker AAPL --skip-download --upload-s3 --index-opensearch
 
 Pipeline:
-  1. sec-edgar-downloader  (SEC User-Agent = your name/email from .env)
-  2. full-submission.txt under sec-edgar-filings/{TICKER}/10-K/{accession}/
+  1. sec-edgar-downloader  (SEC User-Agent from .env)
+  2. full-submission.txt under sec-edgar-filings/
   3. tiktoken chunk 400 tokens, 100 overlap
-  4. app.store.insert_chunks()  → embed + INSERT
+  4. embed once → insert_chunks (pgvector) + optional OpenSearch bulk upsert
 """
 
 from __future__ import annotations
@@ -20,15 +21,15 @@ from pathlib import Path
 
 import tiktoken
 
+from app.aws import is_opensearch_configured
 from app.config import settings
-from app.store import init_schema, insert_chunks
-from app.s3_storage import upload_filing_submission
+from app.s3_storage import is_s3_configured, upload_filing_submission
+from app.store import embed_texts, infer_section, init_schema, insert_chunks
 
 # scripts/ → repo root
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 FILINGS_DIR = PROJECT_ROOT / "sec-edgar-filings"
 
-# Same as SEC-10-K-RAG: ~300 words/chunk, overlap keeps sentences from being cut in half
 CHUNK_SIZE_TOKENS = 400
 CHUNK_OVERLAP_TOKENS = 100
 
@@ -57,13 +58,7 @@ def chunk_with_overlap(text: str, chunk_size: int, overlap: int) -> list[str]:
 
 
 def download_10k(ticker: str, limit: int = 1) -> None:
-    """
-    Download latest 10-K(s) into sec-edgar-filings/.
-    SEC requires real identity — read from settings (SEC_COMPANY_* in .env).
-
-    Note: Downloader's 3rd arg is the *parent* directory; the library always
-    creates a sec-edgar-filings/ subfolder inside it. Pass PROJECT_ROOT, not FILINGS_DIR.
-    """
+    """Download latest 10-K(s) into sec-edgar-filings/."""
     from sec_edgar_downloader import Downloader
 
     dl = Downloader(
@@ -76,12 +71,7 @@ def download_10k(ticker: str, limit: int = 1) -> None:
 
 
 def find_filing_paths(ticker: str) -> list[tuple[Path, str]]:
-    """
-    Locate full-submission.txt files under sec-edgar-filings/.
-    Returns [(path, filing_id), ...] where filing_id = accession folder name.
-
-    Uses rglob so we still find files if an older run used the wrong download path.
-    """
+    """Locate full-submission.txt under sec-edgar-filings/."""
     if not FILINGS_DIR.exists():
         return []
 
@@ -107,8 +97,16 @@ def find_filing_paths(ticker: str) -> list[tuple[Path, str]]:
 
     return results
 
-def ingest_file(txt_path: Path, ticker: str, filing_id: str, *, upload_s3: bool = False) -> int:
-    """Read one filing, chunk, call store.insert_chunks(). Returns chunk count."""
+
+def ingest_file(
+    txt_path: Path,
+    ticker: str,
+    filing_id: str,
+    *,
+    upload_s3: bool = False,
+    index_opensearch: bool = False,
+) -> int:
+    """Read one filing, chunk, embed, write pgvector (+ optional S3 / OpenSearch)."""
     print(f"  Reading {txt_path} ({len(txt_path.read_bytes()) // 1024} KB) ...")
     text = txt_path.read_text(encoding="utf-8", errors="ignore")
 
@@ -119,27 +117,55 @@ def ingest_file(txt_path: Path, ticker: str, filing_id: str, *, upload_s3: bool 
 
     print(f"  Embedding + inserting {len(chunks)} chunks (first run downloads MiniLM) ...")
 
-    # Stable IDs → re-run updates same rows (ON CONFLICT in store.py)
-    chunk_ids = [f"{ticker.upper()}-{filing_id}-{i:05d}" for i in range(len(chunks))]
+    ticker_u = ticker.upper()
+    try:
+        source = str(txt_path.relative_to(PROJECT_ROOT))
+    except ValueError:
+        source = str(txt_path)
+    chunk_ids = [f"{ticker_u}-{filing_id}-{i:05d}" for i in range(len(chunks))]
+    sections = [infer_section(c) for c in chunks]
+    embeddings = embed_texts(chunks)
 
     n = insert_chunks(
         chunks,
-        ticker=ticker.upper(),
+        ticker=ticker_u,
         filing_id=filing_id,
-        source=str(txt_path.relative_to(PROJECT_ROOT)),
+        source=source,
         chunk_ids=chunk_ids,
+        sections=sections,
+        embeddings=embeddings,
     )
 
+    if index_opensearch:
+        if not is_opensearch_configured():
+            print("  OpenSearch: skipped (OPENSEARCH_ENDPOINT not set in .env)")
+        else:
+            from app.store_opensearch import upsert_chunks_opensearch
+
+            os_n = upsert_chunks_opensearch(
+                chunks,
+                ticker=ticker_u,
+                filing_id=filing_id,
+                source=source,
+                chunk_ids=chunk_ids,
+                sections=sections,
+                embeddings=embeddings,
+            )
+            print(f"  OpenSearch: indexed {os_n} chunks → {settings.opensearch_index}")
+
     if upload_s3:
-        uri = upload_filing_submission(txt_path, ticker=ticker, filing_id=filing_id)
-        if uri:
-            print(f"  S3: {uri}")
+        if not is_s3_configured():
+            print("  S3: skipped (S3_BUCKET not set)")
+        else:
+            uri = upload_filing_submission(txt_path, ticker=ticker_u, filing_id=filing_id)
+            if uri:
+                print(f"  S3: {uri}")
 
     return n
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Ingest SEC 10-K into local pgvector")
+    parser = argparse.ArgumentParser(description="Ingest SEC 10-K into pgvector (+ optional cloud)")
     parser.add_argument("--ticker", default="AAPL", help="Ticker symbol (default: AAPL)")
     parser.add_argument("--limit", type=int, default=1, help="Number of 10-Ks to download")
     parser.add_argument(
@@ -150,14 +176,24 @@ def main() -> int:
     parser.add_argument(
         "--upload-s3",
         action="store_true",
-        help="After ingest, upload full-submission.txt to S3 (needs S3_BUCKET in .env)",
+        help="Upload full-submission.txt to S3 (needs S3_BUCKET in .env)",
+    )
+    parser.add_argument(
+        "--index-opensearch",
+        action="store_true",
+        help="Also bulk-index chunks to OpenSearch (needs OPENSEARCH_ENDPOINT)",
     )
     args = parser.parse_args()
     ticker = args.ticker.upper()
 
-    print("Step 5 ingest —", ticker)
+    print("Ingest —", ticker)
     print(f"  SEC identity: {settings.sec_company_name} <{settings.sec_company_email}>")
     print(f"  Database: {settings.database_url}")
+    if args.index_opensearch:
+        ep = settings.opensearch_endpoint.strip() or "(not set)"
+        print(f"  OpenSearch: {ep} index={settings.opensearch_index}")
+    if args.upload_s3:
+        print(f"  S3 bucket: {settings.s3_bucket or '(not set)'}")
 
     print("\n1/3 init_schema() ...")
     init_schema()
@@ -180,11 +216,24 @@ def main() -> int:
     total = 0
     for txt_path, filing_id in filings:
         print(f"\nFiling {filing_id}:")
-        n = ingest_file(txt_path, ticker, filing_id, upload_s3=args.upload_s3)
+        n = ingest_file(
+            txt_path,
+            ticker,
+            filing_id,
+            upload_s3=args.upload_s3,
+            index_opensearch=args.index_opensearch,
+        )
         total += n
         print(f"Ingested {n} chunks for {ticker} / {filing_id}")
 
     print(f"\nDone. Total chunks: {total}")
+    if args.index_opensearch and is_opensearch_configured():
+        print(
+            "Verify OpenSearch retrieve:\n"
+            "  export VECTOR_BACKEND=opensearch\n"
+            "  python -c \"from app.store import search_similar; "
+            "print(search_similar('risk factors', ticker='AAPL', top_k=3))\""
+        )
     return 0
 
 

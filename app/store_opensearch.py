@@ -29,6 +29,7 @@ def upsert_chunks_opensearch(
     source: str,
     sections: list[str] | None = None,
     chunk_ids: list[str] | None = None,
+    embeddings: list[list[float]] | None = None,
 ) -> int:
     """
     Embed chunks and bulk-index into OpenSearch (same metadata shape as pgvector).
@@ -42,7 +43,8 @@ def upsert_chunks_opensearch(
 
     from app.store import embed_texts, infer_section
 
-    embeddings = embed_texts(chunks)
+    if embeddings is None:
+        embeddings = embed_texts(chunks)
     if sections is None:
         sections = [infer_section(c) for c in chunks]
     if chunk_ids is None:

@@ -131,6 +131,11 @@ def require_opensearch_endpoint() -> str:
     return parse_opensearch_host(settings.opensearch_endpoint)
 
 
+def is_opensearch_configured() -> bool:
+    """OPENSEARCH_ENDPOINT 非空才启用云索引（pytest 默认空 → 不调 AWS）。"""
+    return bool(settings.opensearch_endpoint.strip())
+
+
 # ---------------------------------------------------------------------------
 # boto3 Session — 所有 AWS 客户端共享 region（和 settings.aws_region 一致）
 # ---------------------------------------------------------------------------
