@@ -3,8 +3,9 @@ Phase 5 — SecRagStack（CDK 主栈）
 
 Step 2：空骨架，能 cdk synth。
 Step 3：ECR
-Step 4：ECS Fargate（公网 IP，无 ALB — Step 5 再加）
-Step 5+：ALB → IAM task role → Secrets → CloudWatch
+Step 4：ECS Fargate
+Step 5：ALB + target group (/health)
+Step 6+：IAM task role → Secrets → CloudWatch
 
 与 Phase 4 共用：
   - region: us-east-1
@@ -17,6 +18,7 @@ from aws_cdk import CfnOutput, Duration, RemovalPolicy, Stack
 from aws_cdk import aws_ec2 as ec2
 from aws_cdk import aws_ecr as ecr
 from aws_cdk import aws_ecs as ecs
+from aws_cdk import aws_elasticloadbalancingv2 as elbv2
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_logs as logs
 from constructs import Construct
@@ -27,6 +29,7 @@ from stacks.ecs_env import container_environment
 ECR_REPOSITORY_NAME = "sec-rag-api"
 ECS_CLUSTER_NAME = "sec-rag-cluster"
 ECS_SERVICE_NAME = "sec-rag-api"
+CONTAINER_NAME = "ApiContainer"
 CONTAINER_PORT = 8000
 
 # RAG + MiniLM 冷启动：1 vCPU / 2 GB（Fargate 合法组合）
@@ -116,7 +119,7 @@ class SecRagStack(Stack):
         )
 
         container = task_definition.add_container(
-            "ApiContainer",
+            CONTAINER_NAME,
             image=ecs.ContainerImage.from_ecr_repository(self.api_repository, tag="latest"),
             logging=ecs.LogDrivers.aws_logs(
                 stream_prefix="api",
@@ -128,17 +131,21 @@ class SecRagStack(Stack):
         # 避免 linter 报 unused
         assert container is not None
 
+        alb_sg = ec2.SecurityGroup(
+            self,
+            "AlbSg",
+            vpc=vpc,
+            description="Internet-facing ALB HTTP :80",
+            allow_all_outbound=True,
+        )
+        alb_sg.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(80), "HTTP from internet")
+
         api_sg = ec2.SecurityGroup(
             self,
             "ApiServiceSg",
             vpc=vpc,
-            description="Step 4: allow HTTP to Fargate task public IP (Step 5 ALB replaces this pattern)",
+            description="Fargate tasks - HTTP from ALB only",
             allow_all_outbound=True,
-        )
-        api_sg.add_ingress_rule(
-            ec2.Peer.any_ipv4(),
-            ec2.Port.tcp(CONTAINER_PORT),
-            "Temporary: curl task public IP before ALB",
         )
 
         self.api_service = ecs.FargateService(
@@ -154,8 +161,62 @@ class SecRagStack(Stack):
             health_check_grace_period=Duration.seconds(120),
         )
 
+        # -----------------------------------------------------------------
+        # Step 5: ALB + target group — stable DNS; health check /health
+        # -----------------------------------------------------------------
+        api_sg.add_ingress_rule(
+            alb_sg,
+            ec2.Port.tcp(CONTAINER_PORT),
+            "From ALB to API container",
+        )
+
+        target_group = elbv2.ApplicationTargetGroup(
+            self,
+            "ApiTargetGroup",
+            vpc=vpc,
+            port=CONTAINER_PORT,
+            protocol=elbv2.ApplicationProtocol.HTTP,
+            target_type=elbv2.TargetType.IP,
+            health_check=elbv2.HealthCheck(
+                path="/health",
+                healthy_http_codes="200",
+                interval=Duration.seconds(30),
+                timeout=Duration.seconds(10),
+                healthy_threshold_count=2,
+                unhealthy_threshold_count=5,
+            ),
+            deregistration_delay=Duration.seconds(30),
+        )
+        self.api_service.attach_to_application_target_group(target_group)
+
+        alb = elbv2.ApplicationLoadBalancer(
+            self,
+            "ApiAlb",
+            vpc=vpc,
+            internet_facing=True,
+            security_group=alb_sg,
+            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC),
+        )
+        alb.add_listener(
+            "HttpListener",
+            port=80,
+            default_target_groups=[target_group],
+        )
+
         CfnOutput(self, "EcsClusterName", value=cluster.cluster_name)
         CfnOutput(self, "EcsServiceName", value=self.api_service.service_name)
+        CfnOutput(
+            self,
+            "AlbDnsName",
+            value=alb.load_balancer_dns_name,
+            description="Stable API base URL host (http://<this>/health)",
+        )
+        CfnOutput(
+            self,
+            "AlbUrl",
+            value=f"http://{alb.load_balancer_dns_name}",
+            description="curl http://<AlbDnsName>/health",
+        )
         CfnOutput(
             self,
             "LogGroupName",
@@ -171,12 +232,11 @@ class SecRagStack(Stack):
         CfnOutput(
             self,
             "EcsStatusHint",
-            value="python scripts/ecs_status.py --curl",
-            description="After deploy: get task public IP and curl /health",
+            value="python scripts/alb_status.py --curl",
+            description="After deploy: curl /health via ALB DNS",
         )
 
         # -----------------------------------------------------------------
-        # Step 5: Application Load Balancer + target group (/health)
         # Step 6: Task IAM — S3 read, OpenSearch Serverless data access
         # Step 7: Secrets Manager for MANTLE_API_KEY
         # -----------------------------------------------------------------
@@ -184,6 +244,6 @@ class SecRagStack(Stack):
         CfnOutput(
             self,
             "StackPhase",
-            value="5-step4-ecs",
+            value="5-step5-alb",
             description="CDK stack phase marker",
         )

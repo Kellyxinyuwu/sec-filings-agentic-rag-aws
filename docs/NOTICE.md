@@ -31,7 +31,7 @@ Typical files I keep here while building — you will not get them from `git clo
 | `GIT_COMMIT_AND_SYNC.md` | Commit vs Sync（Push）左下角圈圈箭头 |
 | `REST_API_AND_CURL.md` | REST API 是什么、curl 测什么、三个 endpoint 示例 |
 | `PHASE_4_STEP_8.md` | Phase 4 Step 8 实现前指南（README Done + teardown） |
-| `PHASE_5.md` | Phase 5 部署面规划（Docker + ECS + CDK）— Step 1–4 ✅ |
+| `PHASE_5.md` | Phase 5 部署面规划（Docker + ECS + CDK）— Step 1–5 ✅ |
 
 ---
 
@@ -404,7 +404,24 @@ python scripts/ecs_status.py --curl
 
 ---
 
-## Phase 4 teardown (save AWS cost after demo)
+## Phase 5 Step 5 — ALB + health check (verified 2026-06-13)
+
+**Goal:** Stable `http://<alb-dns>/health`; task SG accepts traffic from ALB only.
+
+```bash
+eval "$(python scripts/cdk_env.py)"
+python scripts/cdk_ecs_context.py --deploy
+python scripts/alb_status.py --curl
+```
+
+| Check | Expected |
+|-------|----------|
+| `/health` via ALB | `{"status":"ok","phase":"4","vector_backend":"opensearch"}` |
+| CloudFormation | `SecRagStack` UPDATE_COMPLETE (~8 min) |
+
+`/retrieve` still needs **Step 6** task IAM. Details: local `docs/PHASE_5.md` Step 5.
+
+---
 
 OpenSearch Serverless bills by **OCU** while the collection exists — delete it when not actively developing.
 

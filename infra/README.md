@@ -83,7 +83,27 @@ python scripts/ecs_status.py --curl
 
 `/retrieve` 要等 **Step 6 task IAM + OpenSearch data access**。公网 IP 在 Step 5 ALB 前会变。详见 `docs/PHASE_5.md` Step 4。
 
-## 后续（Step 5+ ALB）
+## Step 5 — ALB + health check ✅（2026-06-13）
+
+**目标：** 稳定 DNS；`GET /health` 做 target health check；任务 SG 仅允许 ALB。
+
+```bash
+eval "$(python scripts/cdk_env.py)"
+python scripts/cdk_ecs_context.py --deploy
+python scripts/alb_status.py --curl
+```
+
+| 资源 | 名 |
+|------|-----|
+| ALB | `SecRagStack-ApiAlb-*` |
+| Target group | health check `/health` |
+| Outputs | `AlbDnsName`, `AlbUrl` |
+
+**验证：** `alb_status.py --curl` → `status: ok`, `phase: 4`, `vector_backend: opensearch`。
+
+`/retrieve` 仍待 **Step 6**。详见 `docs/PHASE_5.md` Step 5。
+
+## 后续（Step 6+ IAM / Secrets）
 
 ```bash
 cdk bootstrap   # 账号/区域首次 deploy 前

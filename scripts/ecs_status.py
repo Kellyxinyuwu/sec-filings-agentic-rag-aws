@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 """
-Phase 5 Step 4 — 查看 ECS service / 任务公网 IP，方便 curl /health（无 ALB 时）
+Phase 5 — 查看 ECS service / 任务状态
 
-用法（repo 根）：
-    python scripts/ecs_status.py
-    python scripts/ecs_status.py --curl
-"""
+Step 4：任务公网 IP（Step 5 后 SG 仅允许 ALB，直连 IP 会失败）
+Step 5+：优先 `python scripts/alb_status.py --curl`
 
 from __future__ import annotations
 
