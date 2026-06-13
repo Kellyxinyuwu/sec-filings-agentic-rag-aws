@@ -146,7 +146,15 @@ python scripts/ecs_logs_tail.py --smoke
 
 Log group `/ecs/sec-rag-api` 已在 Step 4 CDK 创建；`ecs_logs_tail.py --smoke` → **OK**。
 
-## 后续（Step 9–10 E2E / Done）
+## Step 9 — ALB E2E ✅（2026-06-13）
+
+```bash
+python scripts/alb_e2e.py
+```
+
+**验证：** health + retrieve + 3 golden QA + REFUSE 全绿（~80s）。
+
+## 后续（Step 10 Done + teardown）
 
 ```bash
 cdk bootstrap   # 账号/区域首次 deploy 前

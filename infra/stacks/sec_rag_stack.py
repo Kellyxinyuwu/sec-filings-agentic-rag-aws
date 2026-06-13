@@ -8,7 +8,8 @@ Step 5：ALB + target group (/health)
 Step 6：Task IAM (S3 + AOSS)
 Step 7：Secrets Manager (MANTLE_API_KEY)
 Step 8：CloudWatch logs verification
-Step 9+：ALB E2E / Done
+Step 9：ALB E2E golden queries
+Step 10：README Done + teardown
 
 与 Phase 4 共用：
   - region: us-east-1
@@ -281,6 +282,12 @@ class SecRagStack(Stack):
         CfnOutput(
             self,
             "StackPhase",
-            value="5-step8-cloudwatch",
+            value="5-step9-e2e",
             description="CDK stack phase marker",
+        )
+        CfnOutput(
+            self,
+            "E2eHint",
+            value="python scripts/alb_e2e.py",
+            description="Step 9: full ALB E2E (golden_queries.yaml)",
         )

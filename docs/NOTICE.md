@@ -31,7 +31,7 @@ Typical files I keep here while building — you will not get them from `git clo
 | `GIT_COMMIT_AND_SYNC.md` | Commit vs Sync（Push）左下角圈圈箭头 |
 | `REST_API_AND_CURL.md` | REST API 是什么、curl 测什么、三个 endpoint 示例 |
 | `PHASE_4_STEP_8.md` | Phase 4 Step 8 实现前指南（README Done + teardown） |
-| `PHASE_5.md` | Phase 5 部署面规划（Docker + ECS + CDK）— Step 1–8 ✅ |
+| `PHASE_5.md` | Phase 5 部署面规划（Docker + ECS + CDK）— Step 1–9 ✅ |
 
 ---
 
@@ -475,6 +475,23 @@ python scripts/ecs_logs_tail.py --smoke
 | `--smoke` | uvicorn / API activity lines in CloudWatch |
 
 Use boto3 script (local `aws logs tail` may fail with pyexpat on some Mac setups).
+
+---
+
+## Phase 5 Step 9 — ALB E2E (verified 2026-06-13)
+
+**Goal:** Same checklist as local E2E, against ALB URL (`tests/golden_queries.yaml`).
+
+```bash
+python scripts/alb_e2e.py
+```
+
+| Check | Result |
+|-------|--------|
+| `/health` | `ok`, `opensearch` |
+| `/retrieve` | 3 AAPL chunks |
+| Golden QA ×3 | `qa`, evidence, verifier pass |
+| REFUSE | `refuse`, evidence=0 |
 
 ---
 
