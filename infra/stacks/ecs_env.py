@@ -27,7 +27,6 @@ CONTEXT_KEYS: tuple[tuple[str, str], ...] = (
     ("embedding_dimensions", "EMBEDDING_DIMENSIONS"),
     ("llm_provider", "LLM_PROVIDER"),
     ("mantle_base_url", "MANTLE_BASE_URL"),
-    ("mantle_api_key", "MANTLE_API_KEY"),
     ("mantle_model_id", "MANTLE_MODEL_ID"),
     ("log_level", "LOG_LEVEL"),
     ("sec_company_name", "SEC_COMPANY_NAME"),
@@ -60,7 +59,7 @@ def _lookup(scope: Construct, key: str) -> str:
 
 
 def container_environment(scope: Construct) -> dict[str, str]:
-    """非 secret 与 secret 暂都走 env；Step 7 再把 MANTLE_API_KEY 迁 Secrets Manager。"""
+    """Non-secret env only; MANTLE_API_KEY comes from Secrets Manager (Step 7)."""
     env: dict[str, str] = {}
     for ctx_key, container_key in CONTEXT_KEYS:
         value = _lookup(scope, ctx_key)

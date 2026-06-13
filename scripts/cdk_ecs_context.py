@@ -45,6 +45,8 @@ ENV_TO_CONTEXT: dict[str, str] = {
 }
 
 SECRET_CONTEXT_KEYS = frozenset({"mantle_api_key"})
+# Never pass to CDK deploy -c (would land in CFN); use scripts/secrets_sync_mantle.py
+CDK_DEPLOY_CONTEXT_EXCLUDE = frozenset({"mantle_api_key"})
 
 
 def parse_dotenv(path: Path) -> dict[str, str]:
@@ -70,9 +72,11 @@ def parse_dotenv(path: Path) -> dict[str, str]:
     return out
 
 
-def build_context(env: dict[str, str]) -> dict[str, str]:
+def build_context(env: dict[str, str], *, for_deploy: bool = False) -> dict[str, str]:
     ctx: dict[str, str] = {}
     for env_key, ctx_key in ENV_TO_CONTEXT.items():
+        if for_deploy and ctx_key in CDK_DEPLOY_CONTEXT_EXCLUDE:
+            continue
         val = env.get(env_key, "").strip()
         if val:
             ctx[ctx_key] = val
@@ -140,12 +144,16 @@ def main() -> int:
     env = parse_dotenv(args.env_file)
     ctx = build_context(env)
 
-    missing = [k for k in ("opensearch_endpoint", "mantle_api_key", "mantle_model_id") if not ctx.get(k)]
+    missing = [k for k in ("opensearch_endpoint", "mantle_model_id") if not ctx.get(k)]
+    if not env.get("MANTLE_API_KEY", "").strip():
+        missing.append("mantle_api_key (MANTLE_API_KEY in .env)")
     if missing:
         print(f"# WARN: missing in {args.env_file}: {', '.join(missing)}", file=sys.stderr)
 
     if args.deploy:
-        return run_cdk_deploy(ctx, bootstrap=args.bootstrap)
+        deploy_ctx = build_context(env, for_deploy=True)
+        print("# deploy context excludes mantle_api_key — use scripts/secrets_sync_mantle.py", file=sys.stderr)
+        return run_cdk_deploy(deploy_ctx, bootstrap=args.bootstrap)
 
     if args.export:
         for key, value in sorted(ctx.items()):

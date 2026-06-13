@@ -121,7 +121,24 @@ python scripts/alb_api_smoke.py
 
 **验证：** `alb_api_smoke.py` → 3 AAPL chunks via OpenSearch（无容器内 AWS credentials 文件）。
 
-## 后续（Step 7+ Secrets）
+## Step 7 — Secrets Manager ✅（2026-06-13）
+
+**目标：** `MANTLE_API_KEY` 从 Secrets Manager 注入，不进 CDK 明文 context。
+
+```bash
+python scripts/secrets_sync_mantle.py
+python scripts/cdk_ecs_context.py --deploy
+python scripts/alb_api_smoke.py --chat-only
+```
+
+| 项 | 值 |
+|----|-----|
+| Secret | `sec-rag/mantle-api-key` |
+| CDK | `ecs_secrets.py` + execution role `grant_read` |
+
+**验证：** `alb_api_smoke.py --chat-only` → `qa`, 5 evidence, `citations ok`。
+
+## 后续（Step 8–10 E2E / Done）
 
 ```bash
 cdk bootstrap   # 账号/区域首次 deploy 前

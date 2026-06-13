@@ -6,7 +6,8 @@ Step 3：ECR
 Step 4：ECS Fargate
 Step 5：ALB + target group (/health)
 Step 6：Task IAM (S3 + AOSS)
-Step 7+：Secrets → CloudWatch
+Step 7：Secrets Manager (MANTLE_API_KEY)
+Step 8+：CloudWatch E2E
 
 与 Phase 4 共用：
   - region: us-east-1
@@ -22,9 +23,11 @@ from aws_cdk import aws_ecs as ecs
 from aws_cdk import aws_elasticloadbalancingv2 as elbv2
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_logs as logs
+from aws_cdk import aws_secretsmanager as secretsmanager
 from constructs import Construct
 
 from stacks.ecs_env import container_environment
+from stacks.ecs_secrets import container_secrets, mantle_secret_name
 from stacks.task_iam import attach_task_policies
 
 # 与 Dockerfile 本地 tag、ECR 仓库名一致
@@ -113,6 +116,14 @@ class SecRagStack(Stack):
         # Step 6: S3 read + AOSS IAM (data access policy via scripts/aoss_grant_task_role.py)
         attach_task_policies(self, task_role)
 
+        # Step 7: MANTLE_API_KEY from Secrets Manager (sync: scripts/secrets_sync_mantle.py)
+        mantle_secret = secretsmanager.Secret.from_secret_name_v2(
+            self,
+            "MantleApiKeySecret",
+            secret_name=mantle_secret_name(self),
+        )
+        mantle_secret.grant_read(execution_role)
+
         task_definition = ecs.FargateTaskDefinition(
             self,
             "ApiTaskDef",
@@ -131,6 +142,7 @@ class SecRagStack(Stack):
                 log_group=log_group,
             ),
             environment=container_environment(self),
+            secrets=container_secrets(mantle_secret),
             port_mappings=[ecs.PortMapping(container_port=CONTAINER_PORT, protocol=ecs.Protocol.TCP)],
         )
         # 避免 linter 报 unused
@@ -247,12 +259,21 @@ class SecRagStack(Stack):
             description="After deploy: curl /health via ALB DNS",
         )
 
-        # Step 7: Secrets Manager for MANTLE_API_KEY
-        # -----------------------------------------------------------------
-
+        CfnOutput(
+            self,
+            "MantleSecretName",
+            value=mantle_secret_name(self),
+            description="Secrets Manager - python scripts/secrets_sync_mantle.py",
+        )
+        CfnOutput(
+            self,
+            "SecretsSyncHint",
+            value="python scripts/secrets_sync_mantle.py",
+            description="Sync MANTLE_API_KEY from .env before deploy",
+        )
         CfnOutput(
             self,
             "StackPhase",
-            value="5-step6-task-iam",
+            value="5-step7-secrets",
             description="CDK stack phase marker",
         )
