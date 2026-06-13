@@ -279,18 +279,27 @@ def search_similar(
     """
   向量相似度搜索 — RAG 的「R」(Retrieval)。
 
-  原理（直觉）:
-    - 语义相近的句子和问题，embedding 模型会给相近的向量
-    - pgvector 用 <=> 算「余弦距离」：距离越小越相似，0 表示完全相同
-    - ORDER BY embedding <=> 问题向量 LIMIT k → 取最相关的 k 段原文
+  VECTOR_BACKEND=opensearch 时走 OpenSearch k-NN（Step 4+）；
+  默认 local 仍用 pgvector（Phase 1–3 行为不变）。
+    """
+    from app.aws import use_opensearch
 
-  参数:
-    query   用户问题，如 "What are the main risk factors?"
-    ticker  可选，只搜某公司（避免搜到别的股票 filing）
-    top_k   返回几条证据
+    if use_opensearch():
+        from app.store_opensearch import search_similar_opensearch
 
-  返回 dict 列表，字段已对齐 EvidenceChunk（content 在这里叫 excerpt）。
-  score = 1 - 距离，越大越相关（方便 API 展示）。
+        return search_similar_opensearch(query, ticker=ticker, top_k=top_k)
+
+    return _search_similar_pgvector(query, ticker=ticker, top_k=top_k)
+
+
+def _search_similar_pgvector(
+    query: str,
+    *,
+    ticker: str | None = None,
+    top_k: int = 5,
+) -> list[dict[str, Any]]:
+    """
+  pgvector 路径 — 余弦距离 <=>，score = 1 - distance。
     """
     # 问题也要 embed — 必须和入库时用同一模型
     query_embedding = embed_query(query)
