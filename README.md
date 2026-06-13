@@ -17,25 +17,29 @@ POST /chat
       → Verifier     (citation check; fail-closed; max 1 writer retry)
 ```
 
-| Layer | Component | Technology |
-|-------|-----------|------------|
-| API | FastAPI | `app/api.py`, `app/main.py` |
-| Agents | planner, researcher, writer, verifier | `app/agents/` |
-| Retrieval | vector search | `all-MiniLM-L6-v2` + pgvector (default) or **OpenSearch Serverless** (`VECTOR_BACKEND=opensearch`) |
-| Generation | LLM | AWS Bedrock **Mantle** (`qwen.qwen3-coder-next`) |
-| Storage | vectors + metadata | PostgreSQL 16 + pgvector (Docker, port **5433**); optional **S3** filings + **OpenSearch** index |
-| CI | lint + unit tests | GitHub Actions: `ruff` + `pytest` (no live DB/LLM) |
+
+| Layer      | Component                             | Technology                                                                                         |
+| ---------- | ------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| API        | FastAPI                               | `app/api.py`, `app/main.py`                                                                        |
+| Agents     | planner, researcher, writer, verifier | `app/agents/`                                                                                      |
+| Retrieval  | vector search                         | `all-MiniLM-L6-v2` + pgvector (default) or **OpenSearch Serverless** (`VECTOR_BACKEND=opensearch`) |
+| Generation | LLM                                   | AWS Bedrock **Mantle** (`qwen.qwen3-coder-next`)                                                   |
+| Storage    | vectors + metadata                    | PostgreSQL 16 + pgvector (Docker, port **5433**); optional **S3** filings + **OpenSearch** index   |
+| CI         | lint + unit tests                     | GitHub Actions: `ruff` + `pytest` (no live DB/LLM)                                                 |
+
 
 ---
 
 ## Prerequisites
 
-| Requirement | Notes |
-|-------------|--------|
-| Python 3.11+ | CI uses 3.11; 3.14 works locally |
-| Docker | For pgvector database |
-| AWS Bedrock Mantle | API key + model access in `us-east-1` (or your region) |
+
+| Requirement        | Notes                                                              |
+| ------------------ | ------------------------------------------------------------------ |
+| Python 3.11+       | CI uses 3.11; 3.14 works locally                                   |
+| Docker             | For pgvector database                                              |
+| AWS Bedrock Mantle | API key + model access in `us-east-1` (or your region)             |
 | SEC EDGAR identity | Real `SEC_COMPANY_NAME` / `SEC_COMPANY_EMAIL` in `.env` for ingest |
+
 
 ---
 
@@ -58,26 +62,30 @@ cp .env.example .env
 
 Edit `.env` — minimum for full `/chat`:
 
-| Variable | Purpose |
-|----------|---------|
-| `DATABASE_URL` | `postgresql://postgres:postgres@localhost:5433/rag_db` |
-| `EMBEDDING_MODEL` | `all-MiniLM-L6-v2` |
-| `SEC_COMPANY_NAME` / `SEC_COMPANY_EMAIL` | SEC User-Agent (required for downloads) |
-| `LLM_PROVIDER` | `mantle` |
-| `MANTLE_BASE_URL` | e.g. `https://bedrock-mantle.us-east-1.api.aws/v1` |
-| `MANTLE_API_KEY` | From Mantle console |
-| `MANTLE_MODEL_ID` | e.g. `qwen.qwen3-coder-next` |
+
+| Variable                                 | Purpose                                                |
+| ---------------------------------------- | ------------------------------------------------------ |
+| `DATABASE_URL`                           | `postgresql://postgres:postgres@localhost:5433/rag_db` |
+| `EMBEDDING_MODEL`                        | `all-MiniLM-L6-v2`                                     |
+| `SEC_COMPANY_NAME` / `SEC_COMPANY_EMAIL` | SEC User-Agent (required for downloads)                |
+| `LLM_PROVIDER`                           | `mantle`                                               |
+| `MANTLE_BASE_URL`                        | e.g. `https://bedrock-mantle.us-east-1.api.aws/v1`     |
+| `MANTLE_API_KEY`                         | From Mantle console                                    |
+| `MANTLE_MODEL_ID`                        | e.g. `qwen.qwen3-coder-next`                           |
+
 
 Optional: `MANTLE_MAX_TOKENS=1024`, `LOG_LEVEL=INFO`.
 
 **Phase 4 (AWS data plane)** — add when using S3 / OpenSearch:
 
-| Variable | Purpose |
-|----------|---------|
-| `AWS_REGION` | e.g. `us-east-1` |
-| `S3_BUCKET` / `S3_PREFIX` | Raw filing upload target |
-| `OPENSEARCH_ENDPOINT` / `OPENSEARCH_INDEX` | OpenSearch Serverless collection |
-| `VECTOR_BACKEND` | `local` (default, pgvector) or `opensearch` |
+
+| Variable                                   | Purpose                                     |
+| ------------------------------------------ | ------------------------------------------- |
+| `AWS_REGION`                               | e.g. `us-east-1`                            |
+| `S3_BUCKET` / `S3_PREFIX`                  | Raw filing upload target                    |
+| `OPENSEARCH_ENDPOINT` / `OPENSEARCH_INDEX` | OpenSearch Serverless collection            |
+| `VECTOR_BACKEND`                           | `local` (default, pgvector) or `opensearch` |
+
 
 AWS credentials: `~/.aws/credentials` (not committed). See `.env.example`.
 
@@ -110,11 +118,13 @@ python scripts/ingest_edgar.py --ticker AAPL
 python scripts/ingest_edgar.py --ticker AAPL --skip-download --index-opensearch --upload-s3
 ```
 
-| Flag | Effect |
-|------|--------|
-| `--skip-download` | Use filings already under `sec-edgar-filings/` |
+
+| Flag                 | Effect                                                             |
+| -------------------- | ------------------------------------------------------------------ |
+| `--skip-download`    | Use filings already under `sec-edgar-filings/`                     |
 | `--index-opensearch` | Bulk-index chunks to OpenSearch (embed once, shared with pgvector) |
-| `--upload-s3` | Upload `full-submission.txt` to S3 |
+| `--upload-s3`        | Upload `full-submission.txt` to S3                                 |
+
 
 Verify cloud retrieve:
 
@@ -152,11 +162,13 @@ Manual E2E spec: `tests/golden_queries.yaml` (not run by pytest or CI).
 
 ## API
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/health` | `status`, `phase`, `vector_backend` (`local` or `opensearch`) |
-| `POST` | `/retrieve` | Vector search → `EvidenceChunk[]` |
-| `POST` | `/chat` | Full agent pipeline → answer + citations + `agent_steps` + `plan` |
+
+| Method | Path        | Description                                                       |
+| ------ | ----------- | ----------------------------------------------------------------- |
+| `GET`  | `/health`   | `status`, `phase`, `vector_backend` (`local` or `opensearch`)     |
+| `POST` | `/retrieve` | Vector search → `EvidenceChunk[]`                                 |
+| `POST` | `/chat`     | Full agent pipeline → answer + citations + `agent_steps` + `plan` |
+
 
 **Chat request body:**
 
@@ -198,10 +210,12 @@ infra/                        # CDK: ECS Fargate + ALB + IAM + logs
 
 ## Testing strategy
 
-| Type | Command | Needs |
-|------|---------|-------|
-| Unit / API (CI) | `pytest -q` | Nothing live; mocks DB + LLM |
-| Manual E2E | curl + `golden_queries.yaml` | Docker DB, ingest, Mantle, uvicorn |
+
+| Type            | Command                      | Needs                              |
+| --------------- | ---------------------------- | ---------------------------------- |
+| Unit / API (CI) | `pytest -q`                  | Nothing live; mocks DB + LLM       |
+| Manual E2E      | curl + `golden_queries.yaml` | Docker DB, ingest, Mantle, uvicorn |
+
 
 Golden eval is intentional manual smoke — slow, model-dependent, not wired into GitHub Actions.
 
@@ -209,11 +223,13 @@ Golden eval is intentional manual smoke — slow, model-dependent, not wired int
 
 ## Roadmap
 
-| Phase | Status | Scope |
-|-------|--------|--------|
-| 0–3 | Done | Skeleton, ingest, Mantle RAG, agent orchestrator + verifier |
-| 4 | **Done** | S3 filings, OpenSearch Serverless k-NN, hybrid embed (local MiniLM) + cloud retrieve |
-| 5 | **Done** | ECS Fargate, ALB, CDK, CloudWatch, task IAM, Secrets Manager |
+
+| Phase | Status   | Scope                                                                                |
+| ----- | -------- | ------------------------------------------------------------------------------------ |
+| 0–3   | Done     | Skeleton, ingest, Mantle RAG, agent orchestrator + verifier                          |
+| 4     | **Done** | S3 filings, OpenSearch Serverless k-NN, hybrid embed (local MiniLM) + cloud retrieve |
+| 5     | **Done** | ECS Fargate, ALB, CDK, CloudWatch, task IAM, Secrets Manager                         |
+
 
 ### Phase 5 deploy (summary)
 
@@ -231,13 +247,15 @@ Details: **[infra/README.md](infra/README.md)** · teardown: `python scripts/cdk
 
 ### Phase 4 hybrid stack (capstone)
 
-| Component | Choice | Why |
-|-----------|--------|-----|
-| Embeddings | Local `all-MiniLM-L6-v2` (384-d) | No classic Bedrock embed on personal account |
+
+| Component    | Choice                             | Why                                                |
+| ------------ | ---------------------------------- | -------------------------------------------------- |
+| Embeddings   | Local `all-MiniLM-L6-v2` (384-d)   | No classic Bedrock embed on personal account       |
 | Vector index | OpenSearch Serverless `sec-chunks` | Cloud k-NN; switch via `VECTOR_BACKEND=opensearch` |
-| Raw filings | S3 `filings/{ticker}/{filing_id}/` | Durable object storage |
-| LLM | Bedrock **Mantle** | Generation path that works today |
-| Agents | Unchanged from Phase 3 | `tools.retrieve()` abstracts backend |
+| Raw filings  | S3 `filings/{ticker}/{filing_id}/` | Durable object storage                             |
+| LLM          | Bedrock **Mantle**                 | Generation path that works today                   |
+| Agents       | Unchanged from Phase 3             | `tools.retrieve()` abstracts backend               |
+
 
 Manual E2E: `docs/NOTICE.md` checklist · local guide `docs/REST_API_AND_CURL.md` (not on GitHub).
 
