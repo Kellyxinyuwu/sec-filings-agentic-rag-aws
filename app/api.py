@@ -3,6 +3,7 @@ import uuid
 import structlog
 from fastapi import APIRouter
 
+from app.aws import vector_backend
 from app.orchestrator import run_chat
 from app.schemas import (
     ChatRequest,
@@ -18,7 +19,7 @@ log = structlog.get_logger()
 
 @router.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "phase": "3"}
+    return {"status": "ok", "phase": "3", "vector_backend": vector_backend()}
 
 
 @router.post("/retrieve", response_model=RetrieveResponse)

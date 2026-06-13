@@ -284,9 +284,14 @@ def search_similar(
   VECTOR_BACKEND=opensearch 时走 OpenSearch k-NN（Step 4+）；
   默认 local 仍用 pgvector（Phase 1–3 行为不变）。
     """
-    from app.aws import use_opensearch
+    from app.aws import is_opensearch_configured, use_opensearch
 
     if use_opensearch():
+        if not is_opensearch_configured():
+            raise ValueError(
+                "VECTOR_BACKEND=opensearch but OPENSEARCH_ENDPOINT is empty — "
+                "set endpoint in .env or switch VECTOR_BACKEND=local"
+            )
         from app.store_opensearch import search_similar_opensearch
 
         return search_similar_opensearch(query, ticker=ticker, top_k=top_k)

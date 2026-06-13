@@ -111,3 +111,39 @@ def test_search_similar_routes_to_opensearch(
 
     mock_os_search.assert_called_once_with("test query", ticker="MSFT", top_k=2)
     assert rows[0]["chunk_id"] == "x"
+
+
+@patch("app.aws.use_opensearch", return_value=False)
+@patch("app.store._search_similar_pgvector")
+def test_search_similar_routes_to_pgvector(
+    mock_pg_search: MagicMock,
+    mock_use_os: MagicMock,
+) -> None:
+    from app.store import search_similar
+
+    mock_pg_search.return_value = [
+        {
+            "chunk_id": "local-1",
+            "filing_id": "f",
+            "ticker": "AAPL",
+            "section": "Item 1A",
+            "excerpt": "local hit",
+            "score": 0.9,
+        }
+    ]
+    rows = search_similar("test query", ticker="AAPL", top_k=3)
+
+    mock_pg_search.assert_called_once_with("test query", ticker="AAPL", top_k=3)
+    assert rows[0]["chunk_id"] == "local-1"
+
+
+@patch("app.aws.is_opensearch_configured", return_value=False)
+@patch("app.aws.use_opensearch", return_value=True)
+def test_search_similar_opensearch_requires_endpoint(
+    mock_use_os: MagicMock,
+    mock_os_cfg: MagicMock,
+) -> None:
+    from app.store import search_similar
+
+    with pytest.raises(ValueError, match="OPENSEARCH_ENDPOINT is empty"):
+        search_similar("test query", ticker="AAPL", top_k=3)

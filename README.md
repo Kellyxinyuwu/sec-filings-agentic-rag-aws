@@ -140,8 +140,8 @@ If `Address already in use`: `kill $(lsof -t -i :8001)` or use the existing proc
 Quick check:
 
 ```bash
-pytest -q                                    # 33 passed (mocked; CI runs this)
-curl -s http://127.0.0.1:8001/health         # {"status":"ok","phase":"3"}
+pytest -q                                    # 61 passed (mocked; CI runs this)
+curl -s http://127.0.0.1:8001/health         # {"status":"ok","phase":"3","vector_backend":"local"}
 ```
 
 Full step-by-step checklist (Docker, ingest, Mantle, golden curl, troubleshooting): **[docs/NOTICE.md](docs/NOTICE.md)**.
@@ -154,7 +154,7 @@ Manual E2E spec: `tests/golden_queries.yaml` (not run by pytest or CI).
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/health` | `status`, `phase` |
+| `GET` | `/health` | `status`, `phase`, `vector_backend` (`local` or `opensearch`) |
 | `POST` | `/retrieve` | Vector search → `EvidenceChunk[]` |
 | `POST` | `/chat` | Full agent pipeline → answer + citations + `agent_steps` + `plan` |
 
@@ -208,7 +208,7 @@ Golden eval is intentional manual smoke — slow, model-dependent, not wired int
 | Phase | Status | Scope |
 |-------|--------|--------|
 | 0–3 | Done | Skeleton, ingest, Mantle RAG, agent orchestrator + verifier |
-| 4 | In progress | S3 filing storage, OpenSearch k-NN index, ingest dual-write (Steps 1–5 ✅) |
+| 4 | In progress | S3 filing storage, OpenSearch k-NN index, ingest dual-write, `VECTOR_BACKEND` switch (Steps 1–6 ✅) |
 | 5 | Planned | ECS Fargate, CDK, CloudWatch |
 
 ---

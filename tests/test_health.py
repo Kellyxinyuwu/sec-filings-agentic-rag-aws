@@ -32,6 +32,7 @@ def test_health() -> None:
     body = response.json()
     assert body["status"] == "ok"
     assert body["phase"] == "3"
+    assert body["vector_backend"] in ("local", "opensearch")
 
 
 @pytest.fixture

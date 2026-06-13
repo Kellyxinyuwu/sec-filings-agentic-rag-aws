@@ -166,6 +166,7 @@ curl -s http://127.0.0.1:8001/health
 |----------|--|
 | `"status":"ok"` | API up |
 | `"phase":"3"` | Agent orchestrator wired |
+| `"vector_backend"` | `local` (pgvector) or `opensearch` — matches `.env` at server start |
 
 ### C. Retrieve (real DB + embedding model)
 
