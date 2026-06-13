@@ -243,6 +243,21 @@ Revenue query may **honestly decline** to state a total figure if excerpts lack 
 
 ---
 
+## Phase 4 teardown (save AWS cost after demo)
+
+OpenSearch Serverless bills by **OCU** while the collection exists — delete it when not actively developing.
+
+| Step | Action |
+|------|--------|
+| 1 | AWS Console → **OpenSearch Serverless** → collection `kelly-sec-rag-vectors` → **Delete** |
+| 2 | Optional: S3 → bucket `kelly-sec-rag-filings-wxy` → empty `filings/` prefix or delete bucket |
+| 3 | Optional: IAM → remove inline policy `sec-rag-aoss-dev` and data access policy `sec-rag-data-access` |
+| 4 | Local: `docker compose down` stops pgvector |
+
+To resume later: recreate collection + index (`scripts/opensearch_create_index.py`), re-run ingest with `--index-opensearch`.
+
+---
+
 ## Troubleshooting
 
 | Symptom | Likely cause | Fix |

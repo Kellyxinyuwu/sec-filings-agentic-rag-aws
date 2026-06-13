@@ -2,7 +2,7 @@
 
 Multi-agent RAG over SEC 10-K / 10-Q filings: **ingest → retrieve → Planner → Researcher → Writer → Verifier**, with grounded answers and `chunk_id` citations.
 
-**Status:** Phases 0–3 complete. **Phase 4 in progress** (Steps 1–5 done: S3 + OpenSearch ingest dual-write; Steps 6–8 pending). Phase 5 planned (ECS deploy).
+**Status:** Phases 0–4 complete. **Phase 4 (AWS data plane):** S3 filing storage, OpenSearch Serverless k-NN, ingest dual-write, `VECTOR_BACKEND` switch. Phase 5 planned (ECS Fargate + CDK).
 
 ---
 
@@ -174,13 +174,16 @@ Manual E2E spec: `tests/golden_queries.yaml` (not run by pytest or CI).
 
 ```
 app/
-  main.py, api.py, schemas.py, config.py
-  store.py, tools.py          # embed + pgvector retrieve
+  main.py, api.py, schemas.py, config.py, aws.py
+  store.py, store_opensearch.py, s3_storage.py, opensearch_schema.py
+  tools.py                    # retrieve — routes local vs OpenSearch
   llm.py, llm_mantle.py, prompts.py
   orchestrator.py
   agents/                     # planner, researcher, writer, verifier
 scripts/
-  ingest_edgar.py, local_dev.sh, test_mantle.py
+  ingest_edgar.py             # --index-opensearch --upload-s3
+  opensearch_create_index.py, s3_smoke_upload.py
+  local_dev.sh, test_mantle.py
 tests/
   test_*.py                   # pytest (mocked; CI-safe)
   golden_queries.yaml         # manual E2E checklist
@@ -208,8 +211,20 @@ Golden eval is intentional manual smoke — slow, model-dependent, not wired int
 | Phase | Status | Scope |
 |-------|--------|--------|
 | 0–3 | Done | Skeleton, ingest, Mantle RAG, agent orchestrator + verifier |
-| 4 | In progress | S3, OpenSearch, ingest dual-write, VECTOR_BACKEND switch, health phase 4 (Steps 1–7 ✅; Step 8 docs) |
-| 5 | Planned | ECS Fargate, CDK, CloudWatch |
+| 4 | **Done** | S3 filings, OpenSearch Serverless k-NN, hybrid embed (local MiniLM) + cloud retrieve |
+| 5 | Planned | ECS Fargate, CDK, CloudWatch, task IAM roles |
+
+### Phase 4 hybrid stack (capstone)
+
+| Component | Choice | Why |
+|-----------|--------|-----|
+| Embeddings | Local `all-MiniLM-L6-v2` (384-d) | No classic Bedrock embed on personal account |
+| Vector index | OpenSearch Serverless `sec-chunks` | Cloud k-NN; switch via `VECTOR_BACKEND=opensearch` |
+| Raw filings | S3 `filings/{ticker}/{filing_id}/` | Durable object storage |
+| LLM | Bedrock **Mantle** | Generation path that works today |
+| Agents | Unchanged from Phase 3 | `tools.retrieve()` abstracts backend |
+
+Manual E2E: `docs/NOTICE.md` checklist · local guide `docs/REST_API_AND_CURL.md` (not on GitHub).
 
 ---
 
