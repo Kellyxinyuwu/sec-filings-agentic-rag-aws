@@ -18,6 +18,7 @@ import structlog
 from fastapi import APIRouter
 
 from app.aws import vector_backend
+from app.config import settings
 from app.orchestrator import run_chat
 from app.schemas import (
     ChatRequest,
@@ -33,8 +34,9 @@ log = structlog.get_logger()
 
 @router.get("/health")
 def health() -> dict[str, str]:
-    # phase "4" = AWS 数据面（S3 + OpenSearch）已接线；vector_backend 显示当前检索走哪
-    return {"status": "ok", "phase": "4", "vector_backend": vector_backend()}
+    # phase "4" = laptop; "5" = ECS container (Phase 5 deploy)
+    phase = "5" if settings.app_env.strip().lower() == "container" else "4"
+    return {"status": "ok", "phase": phase, "vector_backend": vector_backend()}
 
 
 @router.post("/retrieve", response_model=RetrieveResponse)

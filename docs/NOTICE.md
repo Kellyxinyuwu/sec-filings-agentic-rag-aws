@@ -31,7 +31,7 @@ Typical files I keep here while building — you will not get them from `git clo
 | `GIT_COMMIT_AND_SYNC.md` | Commit vs Sync（Push）左下角圈圈箭头 |
 | `REST_API_AND_CURL.md` | REST API 是什么、curl 测什么、三个 endpoint 示例 |
 | `PHASE_4_STEP_8.md` | Phase 4 Step 8 实现前指南（README Done + teardown） |
-| `PHASE_5.md` | Phase 5 部署面规划（Docker + ECS + CDK）— Step 1–9 ✅ |
+| `PHASE_5.md` | Phase 5 部署面规划 — **✅ 完成** |
 
 ---
 
@@ -492,6 +492,19 @@ python scripts/alb_e2e.py
 | `/retrieve` | 3 AAPL chunks |
 | Golden QA ×3 | `qa`, evidence, verifier pass |
 | REFUSE | `refuse`, evidence=0 |
+
+---
+
+## Phase 5 Step 10 — Done + teardown
+
+**Phase 5 complete.** After capstone demo, tear down compute to save cost:
+
+```bash
+python scripts/cdk_teardown.py              # print checklist
+python scripts/cdk_teardown.py --destroy    # cdk destroy SecRagStack
+```
+
+Then optional Phase 4 cleanup (OpenSearch OCU is usually the largest bill) — see **Phase 4 teardown** below.
 
 ---
 

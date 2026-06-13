@@ -154,7 +154,18 @@ python scripts/alb_e2e.py
 
 **验证：** health + retrieve + 3 golden QA + REFUSE 全绿（~80s）。
 
-## 后续（Step 10 Done + teardown）
+## Step 10 — Done ✅
+
+Phase 5 complete. Teardown after demo:
+
+```bash
+python scripts/cdk_teardown.py
+python scripts/cdk_teardown.py --destroy   # actually delete stack
+```
+
+See also Phase 4 OpenSearch / S3 cleanup in `docs/NOTICE.md`.
+
+## Teardown reference
 
 ```bash
 cdk bootstrap   # 账号/区域首次 deploy 前

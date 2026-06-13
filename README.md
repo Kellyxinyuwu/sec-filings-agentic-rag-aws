@@ -2,7 +2,7 @@
 
 Multi-agent RAG over SEC 10-K / 10-Q filings: **ingest → retrieve → Planner → Researcher → Writer → Verifier**, with grounded answers and `chunk_id` citations.
 
-**Status:** Phases 0–4 complete. **Phase 4 (AWS data plane):** S3 filing storage, OpenSearch Serverless k-NN, ingest dual-write, `VECTOR_BACKEND` switch. Phase 5 planned (ECS Fargate + CDK).
+**Status:** Phases 0–5 complete. **Phase 4:** S3 + OpenSearch Serverless data plane. **Phase 5:** ECS Fargate + ALB + CDK (`infra/`), task IAM, Secrets Manager, CloudWatch — live API on ALB.
 
 ---
 
@@ -184,11 +184,12 @@ scripts/
   ingest_edgar.py             # --index-opensearch --upload-s3
   opensearch_create_index.py, s3_smoke_upload.py
   local_dev.sh, test_mantle.py
+  ecr_push.py, cdk_ecs_context.py, alb_e2e.py, cdk_teardown.py  # Phase 5
 tests/
   test_*.py                   # pytest (mocked; CI-safe)
   golden_queries.yaml         # manual E2E checklist
 docker-compose.yml            # pgvector on :5433
-infra/                        # Phase 5 CDK (planned)
+infra/                        # CDK: ECS Fargate + ALB + IAM + logs
 ```
 
 **Not committed:** `.env`, `.venv/`, `data/`, `sec-edgar-filings/`, and most of `docs/` (local learning notes). On GitHub you only see **[docs/NOTICE.md](docs/NOTICE.md)** — folder notice + local env checklist.
@@ -212,7 +213,21 @@ Golden eval is intentional manual smoke — slow, model-dependent, not wired int
 |-------|--------|--------|
 | 0–3 | Done | Skeleton, ingest, Mantle RAG, agent orchestrator + verifier |
 | 4 | **Done** | S3 filings, OpenSearch Serverless k-NN, hybrid embed (local MiniLM) + cloud retrieve |
-| 5 | Planned | ECS Fargate, CDK, CloudWatch, task IAM roles |
+| 5 | **Done** | ECS Fargate, ALB, CDK, CloudWatch, task IAM, Secrets Manager |
+
+### Phase 5 deploy (summary)
+
+Ingest still runs on your laptop; the API runs on AWS:
+
+```bash
+python scripts/ecr_push.py --build
+python scripts/secrets_sync_mantle.py
+python scripts/cdk_ecs_context.py --deploy
+python scripts/aoss_grant_task_role.py
+python scripts/alb_e2e.py
+```
+
+Details: **[infra/README.md](infra/README.md)** · teardown: `python scripts/cdk_teardown.py`
 
 ### Phase 4 hybrid stack (capstone)
 
