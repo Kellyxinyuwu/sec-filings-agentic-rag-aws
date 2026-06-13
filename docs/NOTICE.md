@@ -279,6 +279,40 @@ docker ps --filter name=sec-rag-api-smoke
 
 ---
 
+## Phase 5 Step 2 — CDK skeleton (verified 2026-06-02)
+
+**What we built:** Python CDK app under `infra/` — `SecRagStack` empty skeleton + `StackPhase` output; no AWS deploy yet.
+
+**Prerequisite:** Node.js 18+ on PATH (`brew install node` if missing). CDK Python (jsii) needs Node even for `python3 app.py`.
+
+```bash
+node --version
+cd sec-filings-agentic-rag-aws
+source .venv/bin/activate
+cd infra
+pip install -r requirements.txt
+python3 app.py
+```
+
+| Check | Expected |
+|-------|----------|
+| Terminal | `OK: synth complete → .../cdk.out/` |
+| `cdk.out/SecRagStack.template.json` | Exists |
+| CloudFormation Outputs | `StackPhase` = `5-step2-skeleton` |
+
+**Issues fixed during Step 2:**
+
+| Issue | Fix |
+|-------|-----|
+| `No such file or directory: 'node'` | `brew install node`; `app.py` preflight with install hint |
+| `Unable to parse aws:///us-east-1` | `cdk.Aws.ACCOUNT_ID` fallback when `CDK_DEFAULT_ACCOUNT` unset |
+| Synth output in `/tmp` only | `app.py` copies assembly to `infra/cdk.out/` |
+| Node v26 jsii warning banner | `JSII_SILENCE_WARNING_UNTESTED_NODE_VERSION=1` in `app.py` |
+
+No `cdk deploy` yet. Step 3: `npm install -g aws-cdk` + ECR push.
+
+---
+
 ## Phase 4 teardown (save AWS cost after demo)
 
 OpenSearch Serverless bills by **OCU** while the collection exists — delete it when not actively developing.
