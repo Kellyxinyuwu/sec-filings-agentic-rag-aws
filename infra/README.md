@@ -165,6 +165,31 @@ python scripts/cdk_teardown.py --destroy   # actually delete stack
 
 See also Phase 4 OpenSearch / S3 cleanup in `docs/NOTICE.md`.
 
+## 想省钱咋办？（不请求也计费）
+
+只要 **SecRagStack 还在 + OpenSearch collection 还在**，就算没人 curl ALB，也会持续计费：
+
+| 常开费用 | 说明 |
+|----------|------|
+| ECS Fargate | 1 task RUNNING → 按 vCPU/内存小时 |
+| ALB | 负载均衡器存在 → 按小时 |
+| OpenSearch Serverless | collection 在 → **通常账单最大头** |
+| ECR / Secrets / Logs / S3 | 相对小，但仍有 |
+
+**按次才明显计费：** Bedrock Mantle（`/chat` token）— 不打 `/chat` 这块几乎不涨。
+
+```bash
+python scripts/cdk_teardown.py              # 只看清单，不删
+python scripts/cdk_teardown.py --destroy    # 删 ECS + ALB + …
+# 然后控制台删 OpenSearch collection kelly-sec-rag-vectors
+```
+
+| 场景 | 建议 |
+|------|------|
+| 还要 demo | 先别 destroy |
+| 项目交完、短期不用云 | destroy + 删 OpenSearch |
+| 只本地开发 | laptop uvicorn 即可，不必常开 ECS |
+
 ## Teardown reference
 
 ```bash
