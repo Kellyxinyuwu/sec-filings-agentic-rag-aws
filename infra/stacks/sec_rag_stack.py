@@ -7,7 +7,8 @@ Step 4：ECS Fargate
 Step 5：ALB + target group (/health)
 Step 6：Task IAM (S3 + AOSS)
 Step 7：Secrets Manager (MANTLE_API_KEY)
-Step 8+：CloudWatch E2E
+Step 8：CloudWatch logs verification
+Step 9+：ALB E2E / Done
 
 与 Phase 4 共用：
   - region: us-east-1
@@ -238,7 +239,13 @@ class SecRagStack(Stack):
             self,
             "LogGroupName",
             value=log_group.log_group_name,
-            description="CloudWatch Logs - aws logs tail /ecs/sec-rag-api",
+            description="CloudWatch Logs",
+        )
+        CfnOutput(
+            self,
+            "LogsTailHint",
+            value="python scripts/ecs_logs_tail.py --smoke",
+            description="Tail /ecs/sec-rag-api via boto3",
         )
         CfnOutput(
             self,
@@ -274,6 +281,6 @@ class SecRagStack(Stack):
         CfnOutput(
             self,
             "StackPhase",
-            value="5-step7-secrets",
+            value="5-step8-cloudwatch",
             description="CDK stack phase marker",
         )

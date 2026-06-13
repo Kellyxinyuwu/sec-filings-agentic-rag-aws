@@ -138,7 +138,15 @@ python scripts/alb_api_smoke.py --chat-only
 
 **验证：** `alb_api_smoke.py --chat-only` → `qa`, 5 evidence, `citations ok`。
 
-## 后续（Step 8–10 E2E / Done）
+## Step 8 — CloudWatch logs ✅（2026-06-13）
+
+```bash
+python scripts/ecs_logs_tail.py --smoke
+```
+
+Log group `/ecs/sec-rag-api` 已在 Step 4 CDK 创建；`ecs_logs_tail.py --smoke` → **OK**。
+
+## 后续（Step 9–10 E2E / Done）
 
 ```bash
 cdk bootstrap   # 账号/区域首次 deploy 前
