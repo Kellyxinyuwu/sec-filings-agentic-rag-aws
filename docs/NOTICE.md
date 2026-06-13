@@ -27,6 +27,8 @@ Typical files I keep here while building — you will not get them from `git clo
 | `TOKEN_AND_COST_CONTROL.md` | `max_tokens`, billing |
 | `INGEST_EDGAR_FAQ.md` | SEC download FAQ |
 | `OLD_VS_NEW_PROJECT.md` | vs prior `SEC-10-K-RAG` repo |
+| `SOURCE_CONTROL_SETUP.md` | Cursor SCM 嵌套 git / 父 folder 踩坑与修复 |
+| `GIT_COMMIT_AND_SYNC.md` | Commit vs Sync（Push）左下角圈圈箭头 |
 
 ---
 
