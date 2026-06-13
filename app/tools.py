@@ -1,10 +1,13 @@
 """
-Phase 1 RAG tools — API and agents call this layer, not store.py directly.
+Phase 1 RAG tools — API 和 agents 只调这一层，不直接碰 store.py。
 
-Why a separate file?
-  - store.py  = database + vectors (low level)
-  - tools.py  = product/agent interface (EvidenceChunk)
-  - Phase 4 switch to OpenSearch: change store, keep tools.retrieve() signature
+分层原因：
+  store.py   = 底层：Postgres/OpenSearch、embed、SQL/k-NN
+  tools.py   = 产品接口：返回 EvidenceChunk（JSON / Researcher 直接用）
+
+Phase 4 切换检索后端：
+  只改 store.search_similar() 内部路由（读 .env VECTOR_BACKEND）；
+  本文件的 retrieve() 签名不变 → orchestrator / researcher 零改动。
 """
 
 from __future__ import annotations
@@ -30,6 +33,7 @@ def retrieve(
     Returns:
         list[EvidenceChunk] for JSON API or Researcher agent (Phase 3)
     """
+    # store 返回 plain dict；这里统一转成 API schema，agents 不用关心 pgvector vs OpenSearch
     rows = search_similar(query, ticker=ticker, top_k=top_k)
 
     return [

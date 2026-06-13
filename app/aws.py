@@ -52,7 +52,12 @@ OPENSEARCH_SERVERLESS_SERVICE = "aoss"
 
 
 # ---------------------------------------------------------------------------
-# 后端选择 — store.py / ingest 将来根据这些决定写 pgvector 还是 OpenSearch
+# 后端选择 — 读 .env VECTOR_BACKEND，决定 retrieve 走 pgvector 还是 OpenSearch
+#
+# 两个场景：
+#   1) 检索（Step 6）：store.search_similar() 看 use_opensearch()
+#   2) ingest 写云（Step 5）：ingest 脚本看 is_opensearch_configured() + --index-opensearch
+#      （ingest 不受 VECTOR_BACKEND 影响，可以同时写 local + 云）
 # ---------------------------------------------------------------------------
 
 
@@ -66,7 +71,7 @@ def vector_backend() -> str:
 
 
 def use_opensearch() -> bool:
-    """True → retrieve 应走 OpenSearch（Phase 4 Step 6 接好 store 后生效）。"""
+    """True → store.search_similar() 走 OpenSearch k-NN（Step 6 检索切换）。"""
     return vector_backend() == "opensearch"
 
 
@@ -132,7 +137,12 @@ def require_opensearch_endpoint() -> str:
 
 
 def is_opensearch_configured() -> bool:
-    """OPENSEARCH_ENDPOINT 非空才启用云索引（pytest 默认空 → 不调 AWS）。"""
+    """
+    OPENSEARCH_ENDPOINT 非空 → ingest 可以 --index-opensearch 写云。
+
+    与 use_opensearch() 不同：ingest 双写看 endpoint 有没有配，不看 VECTOR_BACKEND。
+    pytest 默认 endpoint 空 → 不会误连 AWS。
+    """
     return bool(settings.opensearch_endpoint.strip())
 
 

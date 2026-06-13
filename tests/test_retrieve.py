@@ -3,7 +3,7 @@ Tests for POST /retrieve (Phase 1+).
 
 ----------------------------------------------------------------------
 测什么？
-  - GET /health 的 phase 字段（随项目阶段更新，当前期望 "2"）
+  - GET /health 的 phase 字段（Phase 4 完成后期望 "4"）
   - POST /retrieve：JSON 形状、ticker/top_k 传参、空结果、非法 top_k
 
 不测什么？
@@ -51,13 +51,14 @@ def mock_retrieve(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     return mock
 
 
-def test_health_phase_1() -> None:
-    """健康检查 + phase 版本号（Phase 3 完成后应改为 assert phase == '3'）。"""
+def test_health_phase() -> None:
+    """健康检查 + phase 版本号（Phase 4 AWS 数据面）。"""
     response = client.get("/health")
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "ok"
-    assert body["phase"] == "3"
+    assert body["phase"] == "4"
+    assert body["vector_backend"] in ("local", "opensearch")
 
 
 def test_retrieve_returns_chunks(mock_retrieve: MagicMock) -> None:

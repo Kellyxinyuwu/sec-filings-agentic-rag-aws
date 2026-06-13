@@ -141,7 +141,7 @@ Quick check:
 
 ```bash
 pytest -q                                    # 61 passed (mocked; CI runs this)
-curl -s http://127.0.0.1:8001/health         # {"status":"ok","phase":"3","vector_backend":"local"}
+curl -s http://127.0.0.1:8001/health         # {"status":"ok","phase":"4","vector_backend":"local"}
 ```
 
 Full step-by-step checklist (Docker, ingest, Mantle, golden curl, troubleshooting): **[docs/NOTICE.md](docs/NOTICE.md)**.
@@ -208,7 +208,7 @@ Golden eval is intentional manual smoke — slow, model-dependent, not wired int
 | Phase | Status | Scope |
 |-------|--------|--------|
 | 0–3 | Done | Skeleton, ingest, Mantle RAG, agent orchestrator + verifier |
-| 4 | In progress | S3 filing storage, OpenSearch k-NN index, ingest dual-write, `VECTOR_BACKEND` switch (Steps 1–6 ✅) |
+| 4 | In progress | S3, OpenSearch, ingest dual-write, VECTOR_BACKEND switch, health phase 4 (Steps 1–7 ✅; Step 8 docs) |
 | 5 | Planned | ECS Fargate, CDK, CloudWatch |
 
 ---

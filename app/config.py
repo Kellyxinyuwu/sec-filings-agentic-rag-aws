@@ -42,12 +42,13 @@ class Settings(BaseSettings):
     # Retrieval — 向量从哪搜、embedding 从哪算
     #
     # Phase 1–3 默认：local pgvector + 本地 MiniLM
-    # Phase 4+：可把 VECTOR_BACKEND 改成 opensearch，embed 仍 local（hybrid）
+    # Phase 4+：VECTOR_BACKEND=opensearch 时 retrieve 读 AWS；embed 仍 local（hybrid）
+    # ingest 写 OpenSearch 看 --index-opensearch，与此字段无关
     # -------------------------------------------------------------------------
     database_url: str = "postgresql://postgres:postgres@localhost:5433/rag_db"
     embedding_model: str = "all-MiniLM-L6-v2"  # 384-dim；须与 ingest / retrieve 一致
 
-    vector_backend: str = "local"  # local | opensearch
+    vector_backend: str = "local"  # local=pgvector | opensearch=云 k-NN；改后重启 uvicorn
     embedding_provider: str = "local"  # local | bedrock（future Titan）
     embedding_dimensions: int = 384  # MiniLM 输出维度；OpenSearch mapping 须一致
 

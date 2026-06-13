@@ -209,10 +209,12 @@ def insert_chunks(
     """
     把切好的文本块 embed 后写入数据库。
 
-    Step 5 ingest_edgar.py 调用流程:
-      1. 下载 10-K → 切成 chunks 列表
-      2. insert_chunks(chunks, ticker="AAPL", filing_id="0000320193-...", source="...")
-      3. 本函数内部: embed → INSERT
+    Step 5 ingest 双写时的调用顺序:
+      1. ingest_edgar.py 先 embed_texts(chunks) 一次
+      2. insert_chunks(..., embeddings=embeddings)  ← 传入则不再内部 embed
+      3. upsert_chunks_opensearch(..., embeddings=embeddings)  ← 同一份向量写 OpenSearch
+
+    若 embeddings=None（旧调用方式），本函数内部仍会 embed_texts。
 
     返回写入的 chunk 数量。
     """
@@ -279,14 +281,19 @@ def search_similar(
     top_k: int = 5,
 ) -> list[dict[str, Any]]:
     """
-  向量相似度搜索 — RAG 的「R」(Retrieval)。
+    向量检索 — RAG 的 R（Retrieval）。
 
-  VECTOR_BACKEND=opensearch 时走 OpenSearch k-NN（Step 4+）；
-  默认 local 仍用 pgvector（Phase 1–3 行为不变）。
+    读 .env VECTOR_BACKEND：
+      local      → Docker pgvector（Phase 1–3 默认）
+      opensearch → AWS OpenSearch k-NN（Phase 4 Step 6）
+
+    返回 dict 列表；tools.retrieve() 再包装成 EvidenceChunk。
     """
     from app.aws import is_opensearch_configured, use_opensearch
 
+    # --- Phase 4 路由：一条 env 控制 API + /chat 里 Researcher 走哪条库 ---
     if use_opensearch():
+        # endpoint 空却设了 opensearch → 尽早报错，别等到 boto3 连 AWS 才懵
         if not is_opensearch_configured():
             raise ValueError(
                 "VECTOR_BACKEND=opensearch but OPENSEARCH_ENDPOINT is empty — "
@@ -296,6 +303,7 @@ def search_similar(
 
         return search_similar_opensearch(query, ticker=ticker, top_k=top_k)
 
+    # 默认：本地 pgvector，与 Phase 3 行为一致
     return _search_similar_pgvector(query, ticker=ticker, top_k=top_k)
 
 

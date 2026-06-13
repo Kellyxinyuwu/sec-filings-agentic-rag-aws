@@ -1,8 +1,11 @@
 """
-OpenSearch chunk storage — Phase 4 Step 4.
+OpenSearch chunk 存储 — Phase 4 Step 4 写、Step 5 ingest 灌数据、Step 6 检索读。
 
-Bulk upsert + k-NN search against index mapping in opensearch_schema.py.
-Called from store.py when VECTOR_BACKEND=opensearch (Step 6) or ingest dual-write (Step 5).
+和 pgvector 的分工：
+  ingest：ingest_edgar.py 可选 bulk 写入本模块（与 local 并行，embed 只算一次）
+  retrieve：仅当 .env VECTOR_BACKEND=opensearch 时，store.search_similar() 调本文件
+
+index mapping 见 opensearch_schema.py（384 维 knn_vector，NextGen 无 engine 字段）。
 """
 
 from __future__ import annotations
@@ -18,6 +21,7 @@ log = structlog.get_logger()
 
 
 def _index_name() -> str:
+    # 默认 sec-chunks；可在 .env OPENSEARCH_INDEX 覆盖
     return settings.opensearch_index.strip() or "sec-chunks"
 
 
@@ -32,9 +36,11 @@ def upsert_chunks_opensearch(
     embeddings: list[list[float]] | None = None,
 ) -> int:
     """
-    Embed chunks and bulk-index into OpenSearch (same metadata shape as pgvector).
+    Bulk index chunks into OpenSearch（ingest Step 5 调用）。
 
-    Uses chunk_id as document _id so re-ingest is upsert-safe.
+    - chunk_id 作 document _id → 重跑 ingest 是 upsert，不会 duplicate
+    - embeddings 可由 ingest 预先传入（与 pgvector 共用同一次 MiniLM 计算）
+    - 返回写入条数（= len(chunks)）
     """
     if not chunks:
         return 0
@@ -44,7 +50,7 @@ def upsert_chunks_opensearch(
     from app.store import embed_texts, infer_section
 
     if embeddings is None:
-        embeddings = embed_texts(chunks)
+        embeddings = embed_texts(chunks)  # 单独调用本函数时才内部 embed
     if sections is None:
         sections = [infer_section(c) for c in chunks]
     if chunk_ids is None:
@@ -54,6 +60,7 @@ def upsert_chunks_opensearch(
     index = _index_name()
     client = get_opensearch_client()
 
+    # bulk API 格式：一行 action + 一行 document，交替出现
     body: list[dict[str, Any]] = []
     for chunk_id, content, embedding, section in zip(
         chunk_ids, chunks, embeddings, sections
@@ -63,7 +70,7 @@ def upsert_chunks_opensearch(
             {
                 "chunk_id": chunk_id,
                 "content": content,
-                "embedding": embedding,
+                "embedding": embedding,  # 384 维，须与 index mapping 一致
                 "ticker": ticker_u,
                 "filing_id": filing_id,
                 "section": section,
@@ -98,9 +105,13 @@ def search_similar_opensearch(
     top_k: int = 5,
 ) -> list[dict[str, Any]]:
     """
-    k-NN search on embedding field; optional ticker filter.
+    k-NN 向量检索（Step 6 VECTOR_BACKEND=opensearch 时由 store.search_similar 调用）。
 
-    Returns same dict shape as store.search_similar (pgvector path).
+    - query 先 embed_query（须与 ingest 同一模型 MiniLM）
+    - 可选 ticker filter：只在某公司 filing 里搜
+    - 返回 dict 形状与 pgvector 路径一致，tools.py 才能统一包装 EvidenceChunk
+
+    注意：OpenSearch 的 score 与 pgvector 的 (1 - distance) 尺度不同，chunk_id 可比。
     """
     from app.store import embed_query
 
@@ -113,11 +124,12 @@ def search_similar_opensearch(
         "k": top_k,
     }
     if ticker:
+        # 与 pgvector WHERE ticker = %s 等价
         knn_query["filter"] = {"term": {"ticker": ticker.upper()}}
 
     body = {
         "size": top_k,
-        "query": {"knn": {"embedding": knn_query}},
+        "query": {"knn": {"embedding": knn_query}},  # embedding = mapping 里的字段名
     }
 
     log.debug("opensearch_knn_search", index=index, ticker=ticker, top_k=top_k)

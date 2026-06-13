@@ -165,7 +165,7 @@ curl -s http://127.0.0.1:8001/health
 | Expected | |
 |----------|--|
 | `"status":"ok"` | API up |
-| `"phase":"3"` | Agent orchestrator wired |
+| `"phase":"4"` | AWS data plane wired (S3 + OpenSearch) |
 | `"vector_backend"` | `local` (pgvector) or `opensearch` — matches `.env` at server start |
 
 ### C. Retrieve (real DB + embedding model)

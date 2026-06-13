@@ -10,7 +10,12 @@ Pipeline:
   1. sec-edgar-downloader  (SEC User-Agent from .env)
   2. full-submission.txt under sec-edgar-filings/
   3. tiktoken chunk 400 tokens, 100 overlap
-  4. embed once → insert_chunks (pgvector) + optional OpenSearch bulk upsert
+  4. embed 一次 → insert_chunks (pgvector) + 可选 OpenSearch bulk + 可选 S3 原文
+
+Phase 4 要点：
+  - ingest 写哪几个目标由 CLI flag 决定（--index-opensearch / --upload-s3）
+  - VECTOR_BACKEND 只影响「检索读哪」，不影响 ingest 写哪
+  - 双写时 embed_texts 只调一次，vectors 传给 pgvector 和 OpenSearch
 """
 
 from __future__ import annotations
@@ -32,6 +37,7 @@ FILINGS_DIR = PROJECT_ROOT / "sec-edgar-filings"
 
 CHUNK_SIZE_TOKENS = 400
 CHUNK_OVERLAP_TOKENS = 100
+# overlap 避免句子在 chunk 边界被截断，检索时上下文更连贯
 
 
 def chunk_with_overlap(text: str, chunk_size: int, overlap: int) -> list[str]:
@@ -106,7 +112,14 @@ def ingest_file(
     upload_s3: bool = False,
     index_opensearch: bool = False,
 ) -> int:
-    """Read one filing, chunk, embed, write pgvector (+ optional S3 / OpenSearch)."""
+    """
+    处理单个 filing：切 chunk → embed 一次 → 写入一个或多个存储。
+
+    写入顺序（设计如此）：
+      1. pgvector（始终）— 本地开发 / 对比 / VECTOR_BACKEND=local 时检索用
+      2. OpenSearch（--index-opensearch）— 云向量索引
+      3. S3（--upload-s3）— 原始 full-submission.txt 备份，不参与向量检索
+    """
     print(f"  Reading {txt_path} ({len(txt_path.read_bytes()) // 1024} KB) ...")
     text = txt_path.read_text(encoding="utf-8", errors="ignore")
 
@@ -122,8 +135,11 @@ def ingest_file(
         source = str(txt_path.relative_to(PROJECT_ROOT))
     except ValueError:
         source = str(txt_path)
+    # 稳定 ID：重跑 ingest 会 upsert 同一 chunk，不会无限 duplicate
     chunk_ids = [f"{ticker_u}-{filing_id}-{i:05d}" for i in range(len(chunks))]
     sections = [infer_section(c) for c in chunks]
+
+    # --- Step 5 核心：只 embed 一次，下面三路共用同一份 embeddings ---
     embeddings = embed_texts(chunks)
 
     n = insert_chunks(
@@ -133,7 +149,7 @@ def ingest_file(
         source=source,
         chunk_ids=chunk_ids,
         sections=sections,
-        embeddings=embeddings,
+        embeddings=embeddings,  # 传入后 insert_chunks 内部不再 embed
     )
 
     if index_opensearch:
@@ -149,7 +165,7 @@ def ingest_file(
                 source=source,
                 chunk_ids=chunk_ids,
                 sections=sections,
-                embeddings=embeddings,
+                embeddings=embeddings,  # 与 pgvector 同向量，避免再算一遍 MiniLM
             )
             print(f"  OpenSearch: indexed {os_n} chunks → {settings.opensearch_index}")
 
@@ -157,6 +173,7 @@ def ingest_file(
         if not is_s3_configured():
             print("  S3: skipped (S3_BUCKET not set)")
         else:
+            # S3 存原文，不存 chunk；检索仍走 pgvector 或 OpenSearch
             uri = upload_filing_submission(txt_path, ticker=ticker_u, filing_id=filing_id)
             if uri:
                 print(f"  S3: {uri}")
@@ -183,6 +200,7 @@ def main() -> int:
         action="store_true",
         help="Also bulk-index chunks to OpenSearch (needs OPENSEARCH_ENDPOINT)",
     )
+    # --index-opensearch / --upload-s3 独立：可只开其中一个，也可两个都开
     args = parser.parse_args()
     ticker = args.ticker.upper()
 
@@ -228,6 +246,7 @@ def main() -> int:
 
     print(f"\nDone. Total chunks: {total}")
     if args.index_opensearch and is_opensearch_configured():
+        # 灌完数据后提示如何验证云检索（需另设 VECTOR_BACKEND=opensearch）
         print(
             "Verify OpenSearch retrieve:\n"
             "  export VECTOR_BACKEND=opensearch\n"

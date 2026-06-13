@@ -31,7 +31,7 @@ def test_health() -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "ok"
-    assert body["phase"] == "3"
+    assert body["phase"] == "4"
     assert body["vector_backend"] in ("local", "opensearch")
 
 
