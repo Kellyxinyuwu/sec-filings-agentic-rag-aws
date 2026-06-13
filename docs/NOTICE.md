@@ -371,7 +371,7 @@ python scripts/ecr_push.py             # reuse sec-rag-api:local; no --build
 | Layers Pushed, manifest **403** | Add `ecr:PutImage` + attach **AmazonEC2ContainerRegistryPowerUser** |
 | First push slow (~1h) | Normal — PyTorch layer ~3GB; retry is fast (`Layer already exists`) |
 
-Full Q&A (layers, what is pushed, etc.): local `docs/PHASE_5.md` Step 3.7.
+Full Q&A (Q1–Q7: push duration, layer vs image id, Dockerfile mapping, 403 manifest, ECR size): local `docs/PHASE_5.md` §3.7.
 
 ---
 
