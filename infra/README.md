@@ -58,7 +58,32 @@ python scripts/ecr_push.py            # 复用 sec-rag-api:local
 
 详见 `docs/PHASE_5.md` Step 3（Console 截图级步骤 + Q&A）。
 
-## 后续（Step 4+ ECS）
+## Step 4 — ECS Fargate ✅（2026-06-13）
+
+**目标：** Fargate task **RUNNING**；无 ALB 时用任务 **公网 IP:8000** curl `/health`。
+
+```bash
+eval "$(python scripts/cdk_env.py)"
+python scripts/check_cdk_permissions.py   # 可选
+python scripts/ecr_push.py --build        # Mac 必读：linux/amd64
+python scripts/cdk_ecs_context.py --deploy --bootstrap   # 首次 bootstrap
+python scripts/ecs_status.py --curl
+```
+
+| 资源 | 名 |
+|------|-----|
+| Cluster | `sec-rag-cluster` |
+| Service | `sec-rag-api` |
+| Logs | `/ecs/sec-rag-api` |
+| Task | 1 vCPU / 2 GB，`sec-rag-api:latest` |
+
+**验证：** `/health` → `status: ok`, `phase: 4`, `vector_backend: opensearch`。
+
+**踩坑：** 勿用 `cdk deploy $(... --cdk-args)`；Mac 需 amd64 镜像；IAM role description 勿用 em dash。
+
+`/retrieve` 要等 **Step 6 task IAM + OpenSearch data access**。公网 IP 在 Step 5 ALB 前会变。详见 `docs/PHASE_5.md` Step 4。
+
+## 后续（Step 5+ ALB）
 
 ```bash
 cdk bootstrap   # 账号/区域首次 deploy 前
@@ -92,3 +117,6 @@ infra/
 | `Unable to parse aws:///us-east-1` | account 未设 | 本地 synth 用 `app.py`（已 fallback）；deploy 前 export `CDK_DEFAULT_ACCOUNT` |
 | **Node 26+ 大横幅** | jsii 未官方测试 v26 | 可忽略；`app.py` 已设 `JSII_SILENCE_WARNING_UNTESTED_NODE_VERSION`；推荐 LTS **22** 或 **24** |
 | **manifest 403 after layers Pushed** | 缺 `ecr:PutImage` | Attach **AmazonEC2ContainerRegistryPowerUser** |
+| `cdk deploy` AccessDenied | 缺 CloudFormation/IAM | `check_cdk_permissions.py`；加 PowerUser 或 IAMFullAccess |
+| `CannotPullContainerError` linux/amd64 | Mac ARM 镜像 | `python scripts/ecr_push.py --build` + force redeploy |
+| `No stacks match Wu'` | shell 空格拆参 | `python scripts/cdk_ecs_context.py --deploy` |

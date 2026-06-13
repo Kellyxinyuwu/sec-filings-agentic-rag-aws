@@ -114,7 +114,12 @@ def main() -> int:
     parser.add_argument(
         "--build",
         action="store_true",
-        help="docker build -t sec-rag-api:local . before push",
+        help="docker build before push (default --platform linux/amd64 for Fargate)",
+    )
+    parser.add_argument(
+        "--platform",
+        default="linux/amd64",
+        help="docker build --platform (Mac ARM local smoke can use linux/arm64; ECS Fargate needs linux/amd64)",
     )
     parser.add_argument("--no-login", action="store_true", help="Skip docker login")
     args = parser.parse_args()
@@ -130,7 +135,11 @@ def main() -> int:
     print(f"ECR URI: {repo_uri}")
 
     if args.build:
-        run(["docker", "build", "-t", args.local_image, "."], check=True, cwd=REPO_ROOT)
+        run(
+            ["docker", "build", "--platform", args.platform, "-t", args.local_image, "."],
+            check=True,
+            cwd=REPO_ROOT,
+        )
 
     if not args.no_login:
         docker_login(args.region)

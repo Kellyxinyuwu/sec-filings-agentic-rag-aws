@@ -31,7 +31,7 @@ Typical files I keep here while building — you will not get them from `git clo
 | `GIT_COMMIT_AND_SYNC.md` | Commit vs Sync（Push）左下角圈圈箭头 |
 | `REST_API_AND_CURL.md` | REST API 是什么、curl 测什么、三个 endpoint 示例 |
 | `PHASE_4_STEP_8.md` | Phase 4 Step 8 实现前指南（README Done + teardown） |
-| `PHASE_5.md` | Phase 5 部署面规划（Docker + ECS + CDK）— Step 1 ✅ |
+| `PHASE_5.md` | Phase 5 部署面规划（Docker + ECS + CDK）— Step 1–4 ✅ |
 
 ---
 
@@ -372,6 +372,35 @@ python scripts/ecr_push.py             # reuse sec-rag-api:local; no --build
 | First push slow (~1h) | Normal — PyTorch layer ~3GB; retry is fast (`Layer already exists`) |
 
 Full Q&A (Q1–Q7: push duration, layer vs image id, Dockerfile mapping, 403 manifest, ECR size): local `docs/PHASE_5.md` §3.7.
+
+---
+
+## Phase 5 Step 4 — ECS Fargate (verified 2026-06-13)
+
+**Goal:** Run `sec-rag-api:latest` on Fargate; curl task **public IP:8000/health** before ALB (Step 5).
+
+```bash
+eval "$(python scripts/cdk_env.py)"
+python scripts/check_cdk_permissions.py   # optional preflight
+python scripts/ecr_push.py --build        # Mac: linux/amd64 for Fargate
+python scripts/cdk_ecs_context.py --deploy --bootstrap   # first time only
+python scripts/ecs_status.py --curl
+```
+
+| Resource | Name |
+|----------|------|
+| Cluster / Service | `sec-rag-cluster` / `sec-rag-api` |
+| Task size | 1 vCPU, 2 GB |
+| Logs | `/ecs/sec-rag-api` |
+
+| Check | Result |
+|-------|--------|
+| `/health` | `{"status":"ok","phase":"4","vector_backend":"opensearch"}` |
+| CloudFormation | `SecRagStack` → CREATE_COMPLETE |
+
+**Gotchas:** Use `--deploy` not `cdk deploy $(... --cdk-args)` (spaces in `.env` break shell). Mac ARM images need `ecr_push.py --build` (amd64). Task role description must be ASCII (no em dash).
+
+`/retrieve` needs **Step 6** task IAM + OpenSearch data access. Public IP is ephemeral until **Step 5 ALB**. Details: local `docs/PHASE_5.md` Step 4.
 
 ---
 

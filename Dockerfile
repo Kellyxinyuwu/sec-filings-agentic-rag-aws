@@ -12,7 +12,9 @@
 #   - 没有 sec-edgar-filings/（ingest 仍在宿主机跑）
 #
 # 构建：
-#   docker build -t sec-rag-api:local .
+#   docker build -t sec-rag-api:local .                    # Mac 本地 smoke (arm64)
+#   docker build --platform linux/amd64 -t sec-rag-api:local .  # ECS Fargate 必须 amd64
+#   python scripts/ecr_push.py --build                     # 默认 linux/amd64 推 ECR
 #
 # 运行（Step 1 本地 smoke）：
 #   docker rm -f sec-rag-api-smoke 2>/dev/null
