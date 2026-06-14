@@ -89,11 +89,13 @@ def test_search_similar_opensearch_no_ticker_filter(
     assert "filter" not in call_body["query"]["knn"]["embedding"]
 
 
+@patch("app.aws.is_opensearch_configured", return_value=True)
 @patch("app.aws.use_opensearch", return_value=True)
 @patch("app.store_opensearch.search_similar_opensearch")
 def test_search_similar_routes_to_opensearch(
     mock_os_search: MagicMock,
     mock_use_os: MagicMock,
+    mock_os_cfg: MagicMock,
 ) -> None:
     from app.store import search_similar
 
