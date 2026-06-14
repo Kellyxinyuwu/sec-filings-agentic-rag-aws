@@ -18,8 +18,6 @@ Mock 策略：
 ----------------------------------------------------------------------
 """
 
-import pytest
-
 from app.agents.verifier import verify_answer
 from app.schemas import EvidenceChunk, Plan, QueryIntent
 

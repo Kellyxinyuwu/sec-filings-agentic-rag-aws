@@ -95,7 +95,11 @@ def verify_answer(
             retry_hint=hint,
         )
     else:
-        detail = "citations ok" if cited else "no citations required (empty evidence or honest refusal)"
+        detail = (
+            "citations ok"
+            if cited
+            else "no citations required (empty evidence or honest refusal)"
+        )
         result = VerifierResult(passed=True, detail=detail)
 
     latency_ms = (time.perf_counter() - t0) * 1000

@@ -126,7 +126,8 @@ def require_s3_bucket() -> str:
         raise ValueError(
             f"S3_BUCKET={bucket!r} is not a valid S3 bucket name. "
             "Use lowercase letters, numbers, and hyphens only (e.g. kelly-sec-rag-filings-2026). "
-            "Create the bucket in AWS S3 console (us-east-1) first — do not paste tutorial placeholder text."
+            "Create the bucket in AWS S3 console (us-east-1) first. "
+            "Do not paste tutorial placeholder text."
         )
     return bucket
 

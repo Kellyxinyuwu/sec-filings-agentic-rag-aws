@@ -51,7 +51,7 @@ DIFF_PATTERNS: tuple[str, ...] = (
     "yoy",
 )
 
-# Whole-word buy/sell (avoid matching "buyback" in filing excerpts if query is long — query is short)
+# Whole-word buy/sell (avoid "buyback"; user queries are short)
 _BUY_SELL_RE = re.compile(r"\b(buy|sell)\b", re.IGNORECASE)
 
 

@@ -18,8 +18,6 @@ Mock 策略：
 ----------------------------------------------------------------------
 """
 
-import pytest
-
 from app.agents.planner import run_planner
 from app.schemas import ChatRequest, QueryIntent
 

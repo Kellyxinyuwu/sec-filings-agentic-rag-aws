@@ -39,10 +39,9 @@ from typing import Any
 
 import numpy as np
 import psycopg2
+import structlog
 from pgvector.psycopg2 import register_vector
 from psycopg2.extensions import connection as PgConnection
-
-import structlog
 
 from app.config import settings
 
