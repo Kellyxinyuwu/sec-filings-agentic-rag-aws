@@ -1,176 +1,83 @@
 # SEC Filings Agentic RAG on AWS
 
-Multi-agent RAG over SEC 10-K / 10-Q filings: **ingest → retrieve → Planner → Researcher → Writer → Verifier**, with grounded answers and `chunk_id` citations.
-
-**Status:** Phases 0–5 complete. **Phase 4:** S3 + OpenSearch Serverless data plane. **Phase 5:** ECS Fargate + ALB + CDK (`infra/`), task IAM, Secrets Manager, CloudWatch — live API on ALB.
+Production-style demo: multi-agent RAG over SEC 10-K / 10-Q filings with grounded answers, `chunk_id` citations, and investment-advice guardrails. Data plane on S3 + OpenSearch Serverless; API on ECS Fargate behind an Application Load Balancer.
 
 ---
 
-## Architecture
+## Overview
+
+This service answers factual questions about public company SEC filings. It does **not** provide investment or trading advice.
+
+**Pipeline (`POST /chat`):**
 
 ```
-POST /chat
-  → orchestrator.run_chat()
-      → Planner      (rules: QA / REFUSE / SUMMARIZE / DIFF)
-      → Researcher   (tools.retrieve — MiniLM + pgvector or OpenSearch)
-      → Writer       (grounded prompt + Bedrock Mantle LLM)
-      → Verifier     (citation check; fail-closed; max 1 writer retry)
+Planner → Researcher → Writer → Verifier
+   │          │           │         │
+ rules    vector search  Mantle LLM  citation check
 ```
 
+| Agent | Role |
+|-------|------|
+| **Planner** | Classifies intent: QA, summarize, diff, or **refuse** (e.g. “Should I buy AAPL?”) |
+| **Researcher** | Retrieves top-k evidence chunks via vector search |
+| **Writer** | Generates a grounded answer with inline `[chunk_id]` citations |
+| **Verifier** | Validates citations; fail-closed with at most one writer retry |
 
-| Layer      | Component                             | Technology                                                                                         |
-| ---------- | ------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| API        | FastAPI                               | `app/api.py`, `app/main.py`                                                                        |
-| Agents     | planner, researcher, writer, verifier | `app/agents/`                                                                                      |
-| Retrieval  | vector search                         | `all-MiniLM-L6-v2` + pgvector (default) or **OpenSearch Serverless** (`VECTOR_BACKEND=opensearch`) |
-| Generation | LLM                                   | AWS Bedrock **Mantle** (`qwen.qwen3-coder-next`)                                                   |
-| Storage    | vectors + metadata                    | PostgreSQL 16 + pgvector (Docker, port **5433**); optional **S3** filings + **OpenSearch** index   |
-| CI         | lint + unit tests                     | GitHub Actions: `ruff` + `pytest` (no live DB/LLM)                                                 |
-
+**Ingest** (laptop or CI): download EDGAR filings → chunk → embed → index to OpenSearch (+ optional local pgvector for dev).
 
 ---
 
-## Prerequisites
+## AWS services
 
+| Service | Purpose |
+|---------|---------|
+| **Amazon ECS (Fargate)** | Runs the FastAPI container (`sec-rag-api`, 1 vCPU / 2 GB) |
+| **Application Load Balancer** | Stable HTTP endpoint; `/health` target checks |
+| **Amazon ECR** | Container image registry (`sec-rag-api:latest`) |
+| **Amazon S3** | Raw filing objects (`filings/{ticker}/{filing_id}/`) |
+| **OpenSearch Serverless (AOSS)** | k-NN vector index (`sec-chunks`) |
+| **AWS Secrets Manager** | `MANTLE_API_KEY` injected into ECS tasks |
+| **Amazon CloudWatch Logs** | Task logs (`/ecs/sec-rag-api`) |
+| **AWS IAM** | Task role (S3 + AOSS data access); CDK deploy roles |
+| **AWS CloudFormation** | CDK-managed stack `SecRagStack` |
+| **Amazon Bedrock Mantle** | LLM generation (API key auth, not classic `bedrock-runtime`) |
 
-| Requirement        | Notes                                                              |
-| ------------------ | ------------------------------------------------------------------ |
-| Python 3.11+       | CI uses 3.11; 3.14 works locally                                   |
-| Docker             | For pgvector database                                              |
-| AWS Bedrock Mantle | API key + model access in `us-east-1` (or your region)             |
-| SEC EDGAR identity | Real `SEC_COMPANY_NAME` / `SEC_COMPANY_EMAIL` in `.env` for ingest |
+**Region:** `us-east-1` (default across infra and data plane).
 
-
----
-
-## Local environment setup
-
-### 1. Clone and Python env
-
-```bash
-cd sec-filings-agentic-rag-aws
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-```
-
-### 2. Environment variables
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env` — minimum for full `/chat`:
-
-
-| Variable                                 | Purpose                                                |
-| ---------------------------------------- | ------------------------------------------------------ |
-| `DATABASE_URL`                           | `postgresql://postgres:postgres@localhost:5433/rag_db` |
-| `EMBEDDING_MODEL`                        | `all-MiniLM-L6-v2`                                     |
-| `SEC_COMPANY_NAME` / `SEC_COMPANY_EMAIL` | SEC User-Agent (required for downloads)                |
-| `LLM_PROVIDER`                           | `mantle`                                               |
-| `MANTLE_BASE_URL`                        | e.g. `https://bedrock-mantle.us-east-1.api.aws/v1`     |
-| `MANTLE_API_KEY`                         | From Mantle console                                    |
-| `MANTLE_MODEL_ID`                        | e.g. `qwen.qwen3-coder-next`                           |
-
-
-Optional: `MANTLE_MAX_TOKENS=1024`, `LOG_LEVEL=INFO`.
-
-**Phase 4 (AWS data plane)** — add when using S3 / OpenSearch:
-
-
-| Variable                                   | Purpose                                     |
-| ------------------------------------------ | ------------------------------------------- |
-| `AWS_REGION`                               | e.g. `us-east-1`                            |
-| `S3_BUCKET` / `S3_PREFIX`                  | Raw filing upload target                    |
-| `OPENSEARCH_ENDPOINT` / `OPENSEARCH_INDEX` | OpenSearch Serverless collection            |
-| `VECTOR_BACKEND`                           | `local` (default, pgvector) or `opensearch` |
-
-
-AWS credentials: `~/.aws/credentials` (not committed). See `.env.example`.
-
-Test Mantle only (no DB):
-
-```bash
-python scripts/test_mantle.py
-```
-
-### 3. Database
-
-```bash
-docker compose up -d db
-docker compose ps   # db should be healthy
-```
-
-Postgres listens on **host port 5433** (not 5432).
-
-### 4. Ingest sample data (first time)
-
-**Local only** (pgvector):
-
-```bash
-python scripts/ingest_edgar.py --ticker AAPL
-```
-
-**Phase 4 — dual-write to OpenSearch + S3** (needs AWS creds + `.env`):
-
-```bash
-python scripts/ingest_edgar.py --ticker AAPL --skip-download --index-opensearch --upload-s3
-```
-
-
-| Flag                 | Effect                                                             |
-| -------------------- | ------------------------------------------------------------------ |
-| `--skip-download`    | Use filings already under `sec-edgar-filings/`                     |
-| `--index-opensearch` | Bulk-index chunks to OpenSearch (embed once, shared with pgvector) |
-| `--upload-s3`        | Upload `full-submission.txt` to S3                                 |
-
-
-Verify cloud retrieve:
-
-```bash
-export VECTOR_BACKEND=opensearch
-python -c "from app.store import search_similar; print(len(search_similar('risk factors', ticker='AAPL', top_k=3)))"
-```
-
-Downloads AAPL 10-K, chunks (400 tokens / 100 overlap), embeds with MiniLM, loads into pgvector. Re-run is safe (stable `chunk_id` upsert).
-
-### 5. Run API
-
-```bash
-uvicorn app.main:app --reload --port 8001
-```
-
-If `Address already in use`: `kill $(lsof -t -i :8001)` or use the existing process.
+Deploy details, IAM, and teardown: **[infra/README.md](infra/README.md)**.
 
 ---
 
-## Verify your environment
+## Technology selection
 
-Quick check:
+Design choices for a personal-account capstone that still mirrors production patterns.
 
-```bash
-pytest -q                                    # 61 passed (mocked; CI runs this)
-curl -s http://127.0.0.1:8001/health         # {"status":"ok","phase":"4","vector_backend":"local"}
-```
+| Layer | Selection | Rationale |
+|-------|-----------|-----------|
+| **Embeddings** | `all-MiniLM-L6-v2` (384-d), computed locally | No managed embed API required on personal Bedrock; same model at ingest and query time |
+| **Vector store (prod)** | OpenSearch Serverless k-NN | Managed, scales with collection; `VECTOR_BACKEND=opensearch` on ECS |
+| **Vector store (dev)** | PostgreSQL 16 + pgvector (Docker) | Fast local iteration without AWS |
+| **Raw filings** | S3 | Durable object store; task role read access |
+| **LLM** | Bedrock **Mantle** — `qwen.qwen3-coder-next` | Generation path available on personal accounts; synced via Secrets Manager on ECS |
+| **Orchestration** | Custom Python agents (not LangGraph) | Explicit planner / verifier for auditability |
+| **Compute** | ECS Fargate + ALB | Stateless API, health checks, no server management |
+| **IaC** | AWS CDK (Python) | Repeatable stack; context via `scripts/cdk_ecs_context.py` |
 
-Full step-by-step checklist (Docker, ingest, Mantle, golden curl, troubleshooting): **[docs/NOTICE.md](docs/NOTICE.md)**.
+**Hybrid model:** embeddings run on the ingest machine; only vectors and metadata live in OpenSearch. ECS tasks embed query text locally, then search AOSS.
 
-Manual E2E spec: `tests/golden_queries.yaml` (not run by pytest or CI).
+Future path (commented in `.env.example`): classic `bedrock-runtime` for Claude + Titan embeddings when account access is available.
 
 ---
 
 ## API
 
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | Liveness, deployment phase, active vector backend |
+| `POST` | `/retrieve` | Vector search only — returns `chunks[]`, no LLM |
+| `POST` | `/chat` | Full agent pipeline — `answer`, `citations`, `evidence`, `agent_steps`, `plan`, `trace_id` |
 
-| Method | Path        | Description                                                       |
-| ------ | ----------- | ----------------------------------------------------------------- |
-| `GET`  | `/health`   | `status`, `phase`, `vector_backend` (`local` or `opensearch`)     |
-| `POST` | `/retrieve` | Vector search → `EvidenceChunk[]`                                 |
-| `POST` | `/chat`     | Full agent pipeline → answer + citations + `agent_steps` + `plan` |
-
-
-**Chat request body:**
+**Chat request:**
 
 ```json
 {
@@ -180,87 +87,205 @@ Manual E2E spec: `tests/golden_queries.yaml` (not run by pytest or CI).
 }
 ```
 
----
-
-## Project layout
-
-```
-app/
-  main.py, api.py, schemas.py, config.py, aws.py
-  store.py, store_opensearch.py, s3_storage.py, opensearch_schema.py
-  tools.py                    # retrieve — routes local vs OpenSearch
-  llm.py, llm_mantle.py, prompts.py
-  orchestrator.py
-  agents/                     # planner, researcher, writer, verifier
-scripts/
-  ingest_edgar.py             # --index-opensearch --upload-s3
-  opensearch_create_index.py, s3_smoke_upload.py
-  local_dev.sh, test_mantle.py
-  ecr_push.py, cdk_ecs_context.py, alb_e2e.py, cdk_teardown.py  # Phase 5
-tests/
-  test_*.py                   # pytest (mocked; CI-safe)
-  golden_queries.yaml         # manual E2E checklist
-docker-compose.yml            # pgvector on :5433
-infra/                        # CDK: ECS Fargate + ALB + IAM + logs
-```
-
-**Not committed:** `.env`, `.venv/`, `data/`, `sec-edgar-filings/`, and most of `docs/` (local learning notes). On GitHub you only see **[docs/NOTICE.md](docs/NOTICE.md)** — folder notice + local env checklist.
+**Note:** `/chat` responses are verbose by design — `evidence` and `citations` repeat full filing excerpts for auditability. For demos, pipe to `json.tool` or extract `answer` only (see [Testing](#testing)).
 
 ---
 
-## Testing strategy
+## Testing
 
-
-| Type            | Command                      | Needs                              |
-| --------------- | ---------------------------- | ---------------------------------- |
-| Unit / API (CI) | `pytest -q`                  | Nothing live; mocks DB + LLM       |
-| Manual E2E      | curl + `golden_queries.yaml` | Docker DB, ingest, Mantle, uvicorn |
-
-
-Golden eval is intentional manual smoke — slow, model-dependent, not wired into GitHub Actions.
-
----
-
-## Roadmap
-
-
-| Phase | Status   | Scope                                                                                |
-| ----- | -------- | ------------------------------------------------------------------------------------ |
-| 0–3   | Done     | Skeleton, ingest, Mantle RAG, agent orchestrator + verifier                          |
-| 4     | **Done** | S3 filings, OpenSearch Serverless k-NN, hybrid embed (local MiniLM) + cloud retrieve |
-| 5     | **Done** | ECS Fargate, ALB, CDK, CloudWatch, task IAM, Secrets Manager                         |
-
-
-### Phase 5 deploy (summary)
-
-Ingest still runs on your laptop; the API runs on AWS:
+### Automated (CI)
 
 ```bash
-python scripts/ecr_push.py --build
+pip install -e ".[dev]"
+pytest -q
+```
+
+61 unit/API tests; mocked DB and LLM. No Docker, AWS, or Mantle required. Runs on every push via GitHub Actions (`ruff` + `pytest`).
+
+### Deployed smoke (ALB)
+
+Set the base URL from CloudFormation outputs or `python scripts/alb_status.py`:
+
+```bash
+export API=http://<your-alb-dns>   # no spaces around =
+```
+
+#### 1. Health
+
+```bash
+curl -s "$API/health"
+```
+
+**Expected:**
+
+```json
+{"status":"ok","phase":"5","vector_backend":"opensearch"}
+```
+
+(`phase` is `"5"` when `APP_ENV=container` on ECS; `"4"` on local uvicorn.)
+
+#### 2. Retrieve (vector search only)
+
+```bash
+curl -s -w "\nTIME:%{time_total}s\n" -X POST "$API/retrieve" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"risk factors","ticker":"AAPL","top_k":3}'
+```
+
+**Expected:** HTTP 200; JSON with `"query"` and `"chunks"` array of **3** AAPL items, each with `chunk_id`, `score`, and `excerpt`. Latency typically **15–20s** (cold OpenSearch + embedding).
+
+#### 3. Chat — grounded QA
+
+```bash
+curl -s -X POST "$API/chat" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"What are the main risk factors?","ticker":"AAPL"}' \
+  | python3 -m json.tool
+```
+
+**Expected:**
+
+| Field | Value |
+|-------|-------|
+| `plan.intent` | `qa` |
+| `evidence` | 5 chunks with scores |
+| `agent_steps` | planner → researcher (~0.7s) → writer (~3–4s Mantle) → verifier `citations ok` |
+| `answer` | Bullet summary with inline `[AAPL-…-chunk_id]` citations |
+
+**Answer only (demo-friendly):**
+
+```bash
+curl -s -X POST "$API/chat" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"What are the main risk factors?","ticker":"AAPL"}' \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['answer'])"
+```
+
+#### 4. Chat — refuse investment advice
+
+```bash
+curl -s -X POST "$API/chat" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"Should I buy AAPL?"}' \
+  | python3 -m json.tool
+```
+
+**Expected:**
+
+| Field | Value |
+|-------|-------|
+| `plan.intent` | `refuse` |
+| `evidence` / `citations` | `[]` |
+| `answer` | Starts with *"I cannot provide investment or trading advice…"* |
+| `agent_steps[-1].detail` | `refuse intent — fixed answer, citation check skipped` |
+
+### Sample test matrix
+
+Canonical cases live in **`tests/golden_queries.yaml`**. Run all against ALB:
+
+```bash
+python scripts/alb_e2e.py
+python scripts/alb_e2e.py --base-url "$API"
+```
+
+| ID | Query | Intent | Pass criteria |
+|----|-------|--------|---------------|
+| `risk-factors` | What are the main risk factors? | `qa` | ≥1 evidence; answer mentions “risk”; verifier pass |
+| `revenue-discussion` | What was total net sales or revenue discussion? | `qa` | ≥1 evidence; grounded (may decline if excerpt lacks figure) |
+| `business-overview` | Who is the company or what is the business overview? | `qa` | ≥1 evidence; answer references Apple / products / services |
+| `investment-advice` | Should I buy AAPL? | `refuse` | 0 evidence; fixed refusal prefix |
+
+### Local E2E
+
+Requires Docker (pgvector), ingest, and Mantle in `.env`:
+
+```bash
+docker compose up -d db
+python scripts/ingest_edgar.py --ticker AAPL
+uvicorn app.main:app --reload --port 8001
+```
+
+Replace `$API` with `http://127.0.0.1:8001`. Full checklist: **[docs/NOTICE.md](docs/NOTICE.md)**.
+
+---
+
+## Quick start (local dev)
+
+```bash
+git clone https://github.com/Kellyxinyuwu/sec-filings-agentic-rag-aws.git
+cd sec-filings-agentic-rag-aws
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+cp .env.example .env   # SEC identity, DATABASE_URL, MANTLE_*
+docker compose up -d db
+python scripts/ingest_edgar.py --ticker AAPL
+uvicorn app.main:app --reload --port 8001
+curl -s http://127.0.0.1:8001/health
+```
+
+**Cloud data plane (Phase 4):** configure `S3_*`, `OPENSEARCH_*`, then:
+
+```bash
+python scripts/ingest_edgar.py --ticker AAPL --skip-download --index-opensearch --upload-s3
+export VECTOR_BACKEND=opensearch
+```
+
+---
+
+## Deploy to AWS
+
+Ingest and indexing run on your machine; the API runs on ECS.
+
+```bash
+eval "$(python scripts/cdk_env.py)"
+python scripts/ecr_push.py --build          # Mac: linux/amd64
 python scripts/secrets_sync_mantle.py
-python scripts/cdk_ecs_context.py --deploy
+python scripts/cdk_ecs_context.py --deploy --bootstrap   # first time only
 python scripts/aoss_grant_task_role.py
+python scripts/alb_status.py --curl
 python scripts/alb_e2e.py
 ```
 
-Details: **[infra/README.md](infra/README.md)** · teardown: `python scripts/cdk_teardown.py`
+**Teardown** (stop idle billing): `python scripts/cdk_teardown.py --destroy` plus delete the OpenSearch Serverless collection in console. See **infra/README.md** § cost.
 
-### Phase 4 hybrid stack (capstone)
+---
 
+## Repository layout
 
-| Component    | Choice                             | Why                                                |
-| ------------ | ---------------------------------- | -------------------------------------------------- |
-| Embeddings   | Local `all-MiniLM-L6-v2` (384-d)   | No classic Bedrock embed on personal account       |
-| Vector index | OpenSearch Serverless `sec-chunks` | Cloud k-NN; switch via `VECTOR_BACKEND=opensearch` |
-| Raw filings  | S3 `filings/{ticker}/{filing_id}/` | Durable object storage                             |
-| LLM          | Bedrock **Mantle**                 | Generation path that works today                   |
-| Agents       | Unchanged from Phase 3             | `tools.retrieve()` abstracts backend               |
+```
+app/
+  api.py, orchestrator.py, tools.py
+  agents/          planner, researcher, writer, verifier
+  store_opensearch.py, s3_storage.py, llm_mantle.py
+scripts/
+  ingest_edgar.py, ecr_push.py, cdk_ecs_context.py
+  alb_e2e.py, alb_status.py, ecs_logs_tail.py, cdk_teardown.py
+infra/             CDK — SecRagStack (ECS, ALB, ECR, IAM, logs)
+tests/             pytest + golden_queries.yaml
+docker-compose.yml pgvector on host port 5433
+```
 
+---
 
-Manual E2E: `docs/NOTICE.md` checklist · local guide `docs/REST_API_AND_CURL.md` (not on GitHub).
+## Prerequisites
+
+| Requirement | Notes |
+|-------------|-------|
+| Python 3.11+ | CI uses 3.11 |
+| Docker | Local pgvector; image build for ECR |
+| Node.js 18+ | CDK synth/deploy |
+| AWS credentials | Profile or `~/.aws/credentials` |
+| Bedrock Mantle API key | Generation for `/chat` |
+| SEC EDGAR identity | `SEC_COMPANY_NAME` / `SEC_COMPANY_EMAIL` for downloads |
+
+---
+
+## Compliance
+
+SEC filings are public data. Downloads must use a descriptive User-Agent with contact information per [SEC developer guidance](https://www.sec.gov/os/webmaster-faq#developers). This project is for portfolio / educational use; outputs are not financial advice.
 
 ---
 
 ## License
 
-Portfolio / educational project. SEC filings are public; respect [SEC fair access](https://www.sec.gov/os/webmaster-faq#developers) (User-Agent with contact info).
+Portfolio / educational project. See repository for usage terms.
