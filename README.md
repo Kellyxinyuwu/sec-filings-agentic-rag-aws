@@ -1,14 +1,45 @@
 # SEC Filings Agentic RAG on AWS
 
-Production-style demo: multi-agent RAG over SEC 10-K / 10-Q filings with grounded answers, `chunk_id` citations, and investment-advice guardrails. Data plane on S3 + OpenSearch Serverless; API on ECS Fargate behind an Application Load Balancer.
+Production-style demo: a multi-agent research API over public **SEC 10-K** filings. Ask a company-level question, retrieve the relevant excerpts, and get a source-grounded answer with chunk-level citations — or a refusal when the query is investment advice.
+
+Data plane: S3 + OpenSearch Serverless. API: FastAPI on ECS Fargate behind an Application Load Balancer.
 
 ---
 
-## Overview
+## What it does
 
-This service answers factual questions about public company SEC filings. It does **not** provide investment or trading advice.
+10-K filings are long, unstructured research documents. This service turns them into **auditable Q&A**: factual questions about a company’s public disclosures (risk factors, business overview, and similar) are answered only from retrieved filing text, with every claim traceable to a `chunk_id`.
 
-**Pipeline (`POST /chat`):**
+It is a research aid, not a decision engine. It does **not** provide investment or trading advice.
+
+**Impact of the design**
+
+- **Source quality** — answers cite retrieved chunks; uncited output is not returned
+- **Clear scope** — advice-style queries are refused before retrieval or generation
+- **Inspectable run** — each `/chat` response includes evidence, citations, plan, agent steps, and latency
+- **Runnable path** — ingest on a laptop, API in a container, same pipeline locally (pgvector) and on AWS
+
+---
+
+## Key features
+
+| Area | What ships |
+|------|------------|
+| **Agents** | Planner → Researcher → Writer → Verifier (custom Python orchestrator, not LangGraph) |
+| **Grounding** | Inline `[chunk_id]` citations plus full evidence excerpts |
+| **Document workflow** | EDGAR download → chunk → embed → index; raw filings in S3 |
+| **Retrieval** | Local MiniLM embeddings (384-d) + OpenSearch k-NN (`sec-chunks`); pgvector for local dev |
+| **Quality controls** | Refuse investment-advice queries; citation verifier with one retry, then fail-closed fallback |
+| **Evaluation** | Golden-query smoke tests, per-agent latency, 61 unit/API tests in GitHub Actions |
+| **Deploy** | Python CDK → ECS Fargate + ALB, ECR, IAM, Secrets Manager, CloudWatch |
+
+Demo corpus is primarily **AAPL 10-K**. Planner can label `summarize` / `diff`, but those still use the same retrieve-and-write path.
+
+---
+
+## Pipeline
+
+**`POST /chat`**
 
 ```
 Planner → Researcher → Writer → Verifier
@@ -16,14 +47,16 @@ Planner → Researcher → Writer → Verifier
  rules    vector search  Mantle LLM  citation check
 ```
 
-| Agent | Role |
-|-------|------|
-| **Planner** | Classifies intent: QA, summarize, diff, or **refuse** (e.g. “Should I buy AAPL?”) |
-| **Researcher** | Retrieves top-k evidence chunks via vector search |
-| **Writer** | Generates a grounded answer with inline `[chunk_id]` citations |
-| **Verifier** | Validates citations; fail-closed with at most one writer retry |
+| Agent | LLM? | Role |
+|-------|------|------|
+| **Planner** | No | Intent: QA, summarize, diff, or **refuse** (e.g. “Should I buy AAPL?”). Refuse skips retrieval. |
+| **Researcher** | No | Top-k vector search over filing chunks |
+| **Writer** | Yes | Grounded answer with citations; fixed refusal text for advice queries |
+| **Verifier** | No | Citations must match retrieved evidence; one writer retry, then fail closed |
 
-**Ingest** (laptop or CI): download EDGAR filings → chunk → embed → index to OpenSearch (+ optional local pgvector for dev).
+Only the Writer calls a model. Planner and Verifier stay rule-based so routing and source checks stay cheap, explicit, and auditable.
+
+**Ingest** (laptop): download from EDGAR → chunk → embed → index to OpenSearch (optional local pgvector). Query-time embeddings use the same MiniLM model on the ECS task; vectors live in OpenSearch, not a separate embed API.
 
 ---
 
@@ -50,20 +83,18 @@ Deploy details, IAM, and teardown: **[infra/README.md](infra/README.md)**.
 
 ## Technology selection
 
-Design choices for a personal-account capstone that still mirrors production patterns.
+Personal-account stack that still mirrors production patterns: simplest path that is reliable, not extra agents or APIs for their own sake.
 
 | Layer | Selection | Rationale |
 |-------|-----------|-----------|
-| **Embeddings** | `all-MiniLM-L6-v2` (384-d), computed locally | No managed embed API required on personal Bedrock; same model at ingest and query time |
-| **Vector store (prod)** | OpenSearch Serverless k-NN | Managed, scales with collection; `VECTOR_BACKEND=opensearch` on ECS |
+| **Embeddings** | `all-MiniLM-L6-v2` (384-d), local | Same model at ingest and query time; no managed embed API |
+| **Vector store (prod)** | OpenSearch Serverless k-NN | Managed k-NN; `VECTOR_BACKEND=opensearch` on ECS |
 | **Vector store (dev)** | PostgreSQL 16 + pgvector (Docker) | Fast local iteration without AWS |
-| **Raw filings** | S3 | Durable object store; task role read access |
-| **LLM** | Bedrock **Mantle** — `qwen.qwen3-coder-next` | Generation path available on personal accounts; synced via Secrets Manager on ECS |
-| **Orchestration** | Custom Python agents (not LangGraph) | Explicit planner / verifier for auditability |
-| **Compute** | ECS Fargate + ALB | Stateless API, health checks, no server management |
-| **IaC** | AWS CDK (Python) | Repeatable stack; context via `scripts/cdk_ecs_context.py` |
-
-**Hybrid model:** embeddings run on the ingest machine; only vectors and metadata live in OpenSearch. ECS tasks embed query text locally, then search AOSS.
+| **Raw filings** | S3 | Durable object store |
+| **LLM** | Bedrock **Mantle** — `qwen.qwen3-coder-next` | Generation on personal accounts; key from Secrets Manager |
+| **Orchestration** | Custom Python agents (not LangGraph) | Explicit planner / verifier; only Writer calls a model |
+| **Compute** | ECS Fargate + ALB | Stateless API, health checks |
+| **IaC** | AWS CDK (Python) | Repeatable stack via `scripts/cdk_ecs_context.py` |
 
 Future path (commented in `.env.example`): classic `bedrock-runtime` for Claude + Titan embeddings when account access is available.
 
@@ -87,7 +118,7 @@ Future path (commented in `.env.example`): classic `bedrock-runtime` for Claude 
 }
 ```
 
-**Note:** `/chat` responses are verbose by design — `evidence` and `citations` repeat full filing excerpts for auditability. For demos, pipe to `json.tool` or extract `answer` only (see [Testing](#testing)).
+**Note:** `/chat` responses are verbose by design — `evidence`, `citations`, `plan`, and `agent_steps` are the audit trail (source quality + latency). For demos, pipe to `json.tool` or extract `answer` only (see [Testing](#testing)).
 
 ---
 
