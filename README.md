@@ -91,12 +91,13 @@ Personal-account stack that still mirrors production patterns: simplest path tha
 | **Vector store (prod)** | OpenSearch Serverless k-NN | Managed k-NN; `VECTOR_BACKEND=opensearch` on ECS |
 | **Vector store (dev)** | PostgreSQL 16 + pgvector (Docker) | Fast local iteration without AWS |
 | **Raw filings** | S3 | Durable object store |
-| **LLM** | Bedrock **Mantle** — `qwen.qwen3-coder-next` | Generation on personal accounts; key from Secrets Manager |
+| **LLM (cloud)** | Bedrock **Mantle** — `qwen.qwen3-coder-next` | Original generation path; key from Secrets Manager |
+| **LLM (local demo)** | **Ollama** — e.g. `llama3.2` | Same Writer agent; `LLM_PROVIDER=ollama` — no AWS required |
 | **Orchestration** | Custom Python agents (not LangGraph) | Explicit planner / verifier; only Writer calls a model |
 | **Compute** | ECS Fargate + ALB | Stateless API, health checks |
 | **IaC** | AWS CDK (Python) | Repeatable stack via `scripts/cdk_ecs_context.py` |
 
-Future path (commented in `.env.example`): classic `bedrock-runtime` for Claude + Titan embeddings when account access is available.
+Switch providers with `LLM_PROVIDER` in `.env` (`mantle` | `ollama`). Classic `bedrock-runtime` remains a future option.
 
 ---
 
@@ -136,6 +137,36 @@ cd frontend && npm install && npm run dev
 ```
 
 Open http://localhost:5173. Details: [`frontend/README.md`](frontend/README.md).
+
+---
+
+## Local demo (no AWS) — Ollama + pgvector
+
+This branch supports a fully local demo for recording / GitHub walkthroughs when Bedrock is unavailable. The agent pipeline is unchanged; only the Writer’s LLM backend switches.
+
+**Prerequisites:** Docker (pgvector), [Ollama](https://ollama.com) with a chat model, Node.js for the UI.
+
+```bash
+# 1) Vectors
+docker compose up -d
+
+# 2) LLM (once)
+ollama pull llama3.2
+
+# 3) .env — demo settings (see .env.example)
+#    VECTOR_BACKEND=local
+#    LLM_PROVIDER=ollama
+#    OLLAMA_MODEL_ID=llama3.2
+
+# 4) API
+source .venv/bin/activate
+uvicorn app.main:app --reload --port 8001
+
+# 5) UI
+cd frontend && npm install && npm run dev
+```
+
+Open http://localhost:5173 and ask e.g. “What are the main risk factors?” with ticker `AAPL` (requires prior local ingest into pgvector).
 
 ---
 

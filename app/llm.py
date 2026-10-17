@@ -50,9 +50,9 @@ def chat(
         )
 
     if provider == "ollama":
-        raise NotImplementedError(
-            "LLM_PROVIDER=ollama not implemented yet — optional fallback; see docs."
-        )
+        from app.llm_ollama import ollama_chat
+
+        return ollama_chat(system=system, user=user, max_tokens=max_tokens)
 
     raise ValueError(
         f"Unknown LLM_PROVIDER={settings.llm_provider!r} — expected mantle, bedrock, or ollama"
