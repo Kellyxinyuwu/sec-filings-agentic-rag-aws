@@ -77,6 +77,12 @@ class Settings(BaseSettings):
     mantle_max_tokens: int = 1024
     mantle_timeout_seconds: float = 60.0
 
+    # Local Ollama — demo / offline (no AWS). OpenAI-compatible /v1 endpoint.
+    ollama_base_url: str = "http://127.0.0.1:11434/v1"
+    ollama_model_id: str = "llama3.2"
+    ollama_max_tokens: int = 1024
+    ollama_timeout_seconds: float = 120.0
+
     # Classic bedrock-runtime — future（Support / 公司账号开通后）
     bedrock_chat_model_id: str = ""  # e.g. anthropic.claude-3-5-haiku-...
     bedrock_embed_model_id: str = ""  # e.g. amazon.titan-embed-text-v2:0
