@@ -6,9 +6,7 @@ Data plane: S3 + OpenSearch Serverless. API: FastAPI on ECS Fargate behind an Ap
 
 ### Demo
 
-<video src="./1017.mov" controls playsinline width="100%"></video>
-
-[Download / open demo video](./1017.mov)
+https://github.com/user-attachments/assets/b6bbe4e1-9a67-4d56-954c-652c9ebb3abc
 
 ---
 
