@@ -4,6 +4,12 @@ Production-style demo: a multi-agent research API over public **SEC 10-K** filin
 
 Data plane: S3 + OpenSearch Serverless. API: FastAPI on ECS Fargate behind an Application Load Balancer.
 
+### Demo
+
+<video src="./1017.mov" controls playsinline width="100%"></video>
+
+[Download / open demo video](./1017.mov)
+
 ---
 
 ## What it does
