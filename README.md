@@ -122,6 +122,23 @@ Future path (commented in `.env.example`): classic `bedrock-runtime` for Claude 
 
 ---
 
+## Frontend (FilingDesk)
+
+React + Vite chat UI in [`frontend/`](frontend/). Calls `POST /chat` and shows the answer with clickable citations and agent-step latency.
+
+```bash
+# Terminal 1 — API
+source .venv/bin/activate
+uvicorn app.main:app --reload --port 8001
+
+# Terminal 2 — UI
+cd frontend && npm install && npm run dev
+```
+
+Open http://localhost:5173. Details: [`frontend/README.md`](frontend/README.md).
+
+---
+
 ## Testing
 
 ### Automated (CI)
